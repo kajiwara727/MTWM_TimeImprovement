@@ -8,7 +8,7 @@ RUN_NAME = ""
 # 'auto_permutations': 'auto' で計算された factors の全順列を試し、最適な階層構造を探します。
 # 'random': RANDOM_... 設定に基づいてランダムなシナリオを複数回実行します。
 # 'file_load': CONFIG_LOAD_FILEで指定されたJSONファイルから設定を読み込みます。
-FACTOR_EXECUTION_MODE = "random"
+FACTOR_EXECUTION_MODE = "file_load"
 # 最適化の目的を設定します。
 # "waste": 廃棄物量の最小化を目指します。（最も重要な目的）
 # "operations": 混合操作の総回数の最小化を目指します。（プロセス簡略化）
@@ -46,6 +46,13 @@ MAX_LEVEL_DIFF = None
 # これはDFMMアルゴリズムで混合ツリーの階層を決定する際の因数の最大値にもなります。
 # 例えば 5 に設定すると、[3, 3, 2] はOKですが [7, 2] はNG (7が5を超えるため) となります。
 MAX_MIXER_SIZE = 5
+
+# ペア(R)ノードの生成数（変数）の上限を設定します。
+# "half_p_group": (推奨/ご要望) P値が同じノードグループごとに、そのノード数の半分（切り捨て）を上限としてペアを生成します。
+# "unlimited": (従来通り) P値が一致する全ての1:1組み合わせを探索します。
+# "half_targets": (旧案) 全体で、ターゲット数の半分を上限とします。
+# 整数 (例: 50): 具体的な数値で全体の上限を設定します。
+PEER_NODE_LIMIT = "half_p_group"
 
 # Trueに設定すると、Level 0 のノード (最終ターゲット液) も
 # 他のノードの材料として共有することを許可します。

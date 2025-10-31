@@ -24,6 +24,7 @@ class Config:
     MAX_SHARING_VOLUME = config.MAX_SHARING_VOLUME
     MAX_LEVEL_DIFF = config.MAX_LEVEL_DIFF
     MAX_MIXER_SIZE = config.MAX_MIXER_SIZE
+    PEER_NODE_LIMIT = config.PEER_NODE_LIMIT
     ENABLE_FINAL_PRODUCT_SHARING = config.ENABLE_FINAL_PRODUCT_SHARING
 
     # --- 'random' モード用の設定を個別に読み込む ---
