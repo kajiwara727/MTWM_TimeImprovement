@@ -18,7 +18,7 @@ OPTIMIZATION_MODE = "waste"
 # --- 出力設定 ---
 # Trueに設定すると、最適化完了後に混合ツリーの可視化グラフ (PNG画像) を生成します。
 # Falseに設定すると、グラフ生成をスキップし、処理時間を短縮できます。
-ENABLE_VISUALIZATION = False
+ENABLE_VISUALIZATION = True
 
 # 'file_load' モードで使用する設定ファイル名を指定します。
 # ランダム実行で生成したファイル名 (例: "manual-check_eb8386bc_1/random_configs.json") を設定すると、

@@ -16,7 +16,7 @@ class SolutionReporter:
         model,
         objective_mode="waste",
         enable_visualization=True,
-        optimization_settings=None,  # <-- 追加
+        optimization_settings=None, 
     ):
         """
         コンストラクタ。
@@ -28,7 +28,7 @@ class SolutionReporter:
             enable_visualization (bool): 可視化 (PNG生成) を行うかどうか。
         """
         self.problem = problem
-        self.model = model  # これは OrToolsSolutionModel オブジェクト
+        self.model = model 
         self.objective_mode = objective_mode
         self.enable_visualization = enable_visualization
 
@@ -147,7 +147,7 @@ class SolutionReporter:
             )
             
         settings = self.optimization_settings
-        
+
         # --- 最適化設定 (config.py の内容) ---
         content.extend(
             [

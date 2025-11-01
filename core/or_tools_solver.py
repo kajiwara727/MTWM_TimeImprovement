@@ -1,4 +1,3 @@
-# core/or_tools_solver.py (テクニック適用・互換性維持版)
 import time
 import sys
 from ortools.sat.python import cp_model  # Or-Tools の CP-SAT ソルバーをインポート
@@ -299,7 +298,7 @@ class OrToolsSolver:
         self._define_or_tools_variables()
         self._set_initial_constraints()
         self._set_conservation_constraints()
-        self._set_concentration_constraints()
+        self._set_concentration_constraints() # [MODIFIED] これをリファクタリング
         self._set_ratio_sum_constraints()
         self._set_leaf_node_constraints()
         self._set_mixer_capacity_constraints()
@@ -497,9 +496,12 @@ class OrToolsSolver:
             # (例: W_total == w_r1 + w_r2 + w_intra_... + w_inter_...)
             self.model.Add(total_produced == sum(self._get_input_vars(node_vars)))
 
+    # [MODIFIED] 濃度保存則のロジックをリファクタリング
     def _set_concentration_constraints(self):
         """[制約3] 濃度保存則 (混合方程式)
            f_dst * r_dst_i = sum( (P_dst / P_src) * r_src_i * w_src )
+           
+           [MODIFIED] 実際のロジックは3つのヘルパーメソッドに分割
         """
         for (
             dst_target_idx,
@@ -507,11 +509,15 @@ class OrToolsSolver:
             dst_node_idx,
             node_vars,
         ) in self._iterate_all_nodes():
+            
             p_dst = self.problem.p_value_maps[dst_target_idx][(dst_level, dst_node_idx)]
             f_dst = self.problem.targets_config[dst_target_idx]["factors"][dst_level]
+            
+            node_name_prefix = f"t{dst_target_idx}l{dst_level}k{dst_node_idx}"
 
             # 試薬ごと (i) に制約を追加
             for reagent_idx in range(self.problem.num_reagents):
+                
                 # --- 左辺 (LHS) ---
                 lhs = f_dst * node_vars["ratio_vars"][reagent_idx] # f_dst * r_dst_i
                 
@@ -519,61 +525,106 @@ class OrToolsSolver:
                 rhs_terms = []
                 
                 # (A) 試薬からの入力
-                # (P_dst / P_src_reagent) * r_src_reagent * w_src_reagent
-                #   r_src_reagent = 1 (試薬iのみ1, 他は0)
-                #   P_src_reagent = 1 (試薬のP値は1)
-                # -> P_dst * 1 * w_reagent_i
-                rhs_terms.append(p_dst * node_vars["reagent_vars"][reagent_idx])
+                rhs_terms.append(
+                    self._add_concentration_term_for_reagents(
+                        node_vars, p_dst, reagent_idx
+                    )
+                )
 
                 # (B) ツリー内共有からの入力
-                for key, w_var in node_vars.get("intra_sharing_vars", {}).items():
-                    key_no_prefix = key.replace("from_", "")
-                    parsed_key = parse_sharing_key(key_no_prefix)
-                    l_src = parsed_key["level"]
-                    k_src = parsed_key["node_idx"]
-                    r_src = self.forest_vars[dst_target_idx][l_src][k_src][
-                        "ratio_vars"
-                    ][reagent_idx] # r_src_i
-                    p_src = self.problem.p_value_maps[dst_target_idx][(l_src, k_src)] # P_src
-                    
-                    # (r_src * w_var) の掛け算を行うための中間変数
-                    prod_name = f"Prod_intra_t{dst_target_idx}l{dst_level}k{dst_node_idx}_r{reagent_idx}_from_{key}"
-                    product_var = self.model.NewIntVar(0, MAX_PRODUCT_BOUND, prod_name)
-                    self.model.AddMultiplicationEquality(product_var, [r_src, w_var])
-                    
-                    scale_factor = p_dst // p_src # (P_dst / P_src)
-                    rhs_terms.append(product_var * scale_factor)
+                rhs_terms.extend(
+                    self._add_concentration_term_for_intra_sharing(
+                        node_vars,
+                        p_dst,
+                        reagent_idx,
+                        dst_target_idx,
+                        node_name_prefix
+                    )
+                )
 
                 # (C) ツリー間共有からの入力
-                for key, w_var in node_vars.get("inter_sharing_vars", {}).items():
-                    key_no_prefix = key.replace("from_", "")
-                    parsed_key = parse_sharing_key(key_no_prefix)
-                    if parsed_key["type"] == "PEER":
-                        # (C-1) ピア(R)ノードからの入力
-                        r_node_idx = parsed_key["idx"]
-                        or_peer_node = self.peer_vars[r_node_idx]
-                        r_src = or_peer_node["ratio_vars"][reagent_idx] # r_src_i
-                        p_src = or_peer_node["p_value"] # P_src
-                    else:
-                        # (C-2) DFMMノードからの入力
-                        m_src = parsed_key["target_idx"]
-                        l_src = parsed_key["level"]
-                        k_src = parsed_key["node_idx"]
-                        r_src = self.forest_vars[m_src][l_src][k_src]["ratio_vars"][
-                            reagent_idx
-                        ] # r_src_i
-                        p_src = self.problem.p_value_maps[m_src][(l_src, k_src)] # P_src
-                    
-                    prod_name = f"Prod_inter_t{dst_target_idx}l{dst_level}k{dst_node_idx}_r{reagent_idx}_from_{key}"
-                    product_var = self.model.NewIntVar(0, MAX_PRODUCT_BOUND, prod_name)
-                    self.model.AddMultiplicationEquality(product_var, [r_src, w_var])
-                    
-                    scale_factor = p_dst // p_src # (P_dst / P_src)
-                    rhs_terms.append(product_var * scale_factor)
+                rhs_terms.extend(
+                    self._add_concentration_term_for_inter_sharing(
+                        node_vars,
+                        p_dst,
+                        reagent_idx,
+                        node_name_prefix
+                    )
+                )
                 
                 # --- 制約を追加 ---
                 # (LHS == sum(RHS))
                 self.model.Add(lhs == sum(rhs_terms))
+
+    # [NEW] 濃度保存則ヘルパー 1/3: 試薬
+    def _add_concentration_term_for_reagents(self, node_vars, p_dst, reagent_idx):
+        """[制約3A] 濃度保存則 - 試薬からの入力項を計算"""
+        # (P_dst / P_src_reagent) * r_src_reagent * w_src_reagent
+        #   r_src_reagent = 1 (試薬iのみ1, 他は0)
+        #   P_src_reagent = 1 (試薬のP値は1)
+        # -> P_dst * 1 * w_reagent_i
+        return p_dst * node_vars["reagent_vars"][reagent_idx]
+
+    # [NEW] 濃度保存則ヘルパー 2/3: ツリー内(Intra)共有
+    def _add_concentration_term_for_intra_sharing(
+        self, node_vars, p_dst, reagent_idx, dst_target_idx, node_name_prefix
+    ):
+        """[制約3B] 濃度保存則 - ツリー内共有からの入力項を計算"""
+        rhs_terms = []
+        for key, w_var in node_vars.get("intra_sharing_vars", {}).items():
+            key_no_prefix = key.replace("from_", "")
+            parsed_key = parse_sharing_key(key_no_prefix)
+            l_src = parsed_key["level"]
+            k_src = parsed_key["node_idx"]
+            r_src = self.forest_vars[dst_target_idx][l_src][k_src][
+                "ratio_vars"
+            ][reagent_idx] # r_src_i
+            p_src = self.problem.p_value_maps[dst_target_idx][(l_src, k_src)] # P_src
+            
+            # (r_src * w_var) の掛け算を行うための中間変数
+            prod_name = f"Prod_intra_{node_name_prefix}_r{reagent_idx}_from_{key}"
+            product_var = self.model.NewIntVar(0, MAX_PRODUCT_BOUND, prod_name)
+            self.model.AddMultiplicationEquality(product_var, [r_src, w_var])
+            
+            scale_factor = p_dst // p_src # (P_dst / P_src)
+            rhs_terms.append(product_var * scale_factor)
+        return rhs_terms
+
+    # [NEW] 濃度保存則ヘルパー 3/3: ツリー間(Inter)共有
+    def _add_concentration_term_for_inter_sharing(
+        self, node_vars, p_dst, reagent_idx, node_name_prefix
+    ):
+        """[制約3C] 濃度保存則 - ツリー間共有からの入力項を計算"""
+        rhs_terms = []
+        for key, w_var in node_vars.get("inter_sharing_vars", {}).items():
+            key_no_prefix = key.replace("from_", "")
+            parsed_key = parse_sharing_key(key_no_prefix)
+            
+            if parsed_key["type"] == "PEER":
+                # (C-1) ピア(R)ノードからの入力
+                r_node_idx = parsed_key["idx"]
+                or_peer_node = self.peer_vars[r_node_idx]
+                r_src = or_peer_node["ratio_vars"][reagent_idx] # r_src_i
+                p_src = or_peer_node["p_value"] # P_src
+            else: # parsed_key["type"] == "DFMM"
+                # (C-2) DFMMノードからの入力
+                m_src = parsed_key["target_idx"]
+                l_src = parsed_key["level"]
+                k_src = parsed_key["node_idx"]
+                r_src = self.forest_vars[m_src][l_src][k_src]["ratio_vars"][
+                    reagent_idx
+                ] # r_src_i
+                p_src = self.problem.p_value_maps[m_src][(l_src, k_src)] # P_src
+            
+            prod_name = f"Prod_inter_{node_name_prefix}_r{reagent_idx}_from_{key}"
+            product_var = self.model.NewIntVar(0, MAX_PRODUCT_BOUND, prod_name)
+            self.model.AddMultiplicationEquality(product_var, [r_src, w_var])
+            
+            scale_factor = p_dst // p_src # (P_dst / P_src)
+            rhs_terms.append(product_var * scale_factor)
+        return rhs_terms
+    
+    # [MODIFIED] ここから下のメソッドは変更なし
 
     def _set_ratio_sum_constraints(self):
         """[制約4] 各ノードの比率の合計値は、そのノードのP値と一致しなければならない"""

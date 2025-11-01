@@ -1,5 +1,24 @@
 import os
 
+def _save_summary_file(filepath, content, summary_type_name):
+    """
+    [NEW] サマリーレポートのコンテンツ(文字列リスト)を受け取り、
+    指定されたファイルパスに書き込む共通ヘルパー関数。
+    """
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(content))
+        print("\n" + "=" * 60)
+        print(
+            f"SUCCESS: A summary of all {summary_type_name} runs has been saved to:"
+        )
+        print(f"  -> {filepath}")
+        print("=" * 60)
+        return True
+    except IOError as e:
+        print(f"\nError saving {summary_type_name} run summary file: {e}")
+        return False
+
 
 def _calculate_and_save_summary(
     run_results, output_dir, summary_filename, title_prefix, objective_mode
@@ -112,18 +131,9 @@ def _calculate_and_save_summary(
     else:
         content.append("\nNo successful runs found to calculate averages.")
 
-    # --- 3. ファイルへの保存 ---
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write("\n".join(content))
-        print("\n" + "=" * 60)
-        print(f"SUCCESS: A summary of all {title_prefix} runs has been saved to:")
-        print(f"  -> {filepath}")
-        print("=" * 60)
-        return True
-    except IOError as e:
-        print(f"\nError saving {title_prefix} run summary file: {e}")
-        return False
+    # --- 3. [MODIFIED] 共通関数を呼び出してファイルへ保存 ---
+    _save_summary_file(filepath, content, title_prefix)
+
 
 # --- 公開関数 (各Runnerから呼び出される) ---
 
@@ -141,7 +151,7 @@ def save_random_run_summary(run_results, output_dir):
     _calculate_and_save_summary(
         run_results, 
         output_dir, 
-        summary_filename, # 変更: ファイル名を直接渡す
+        summary_filename, 
         "Random", 
         objective_mode
     )
@@ -158,7 +168,7 @@ def save_comparison_summary(run_results, output_dir, objective_mode):
     _calculate_and_save_summary(
         run_results, 
         output_dir, 
-        summary_filename, # 変更: ファイル名を直接渡す
+        summary_filename, 
         "Comparison", 
         objective_mode
     )
@@ -166,7 +176,7 @@ def save_comparison_summary(run_results, output_dir, objective_mode):
 
 def save_permutation_summary(run_results, output_dir, objective_mode):
     """'auto_permutations' モード用のサマリーを保存する
-       (平均値ではなく、ベスト/セカンドベストのパターンを報告する)
+       (平均値ではなく、ベスト/ワーストのパターンを報告する)
     """
     # 1. 成功した実行のみをフィルタリング
     successful_runs = [res for res in run_results if res["final_value"] is not None]
@@ -279,10 +289,5 @@ def save_permutation_summary(run_results, output_dir, objective_mode):
     else:
         content.append("\nNo second best permutation found.")
 
-    # 6. ファイル保存
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write("\n".join(content))
-        print(f"\nPermutation summary saved to: {filepath}")
-    except IOError as e:
-        print(f"\nError saving permutation summary file: {e}")
+    # --- 6. [MODIFIED] 共通関数を呼び出してファイルへ保存 ---
+    _save_summary_file(filepath, content, "Permutation Analysis")

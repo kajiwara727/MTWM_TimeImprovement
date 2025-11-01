@@ -267,18 +267,18 @@ class MTWMProblem:
                 # (ツリー内)
                 key_str = create_intra_key(src_level, src_node_idx)
                 key = f"from_{key_str}"
-                intra_vars[key] = None # ★ OrToolsSolver がキーのみ参照するため None を設定
+                intra_vars[key] = None 
             else:
                 if src_target_idx == "R":
                     # (ピア R)
                     key_str = create_peer_key(src_level)
                     key = f"from_{key_str}"
-                    inter_vars[key] = None # ★
+                    inter_vars[key] = None 
                 else:
                     # (ツリー間)
                     key_str = create_inter_key(src_target_idx, src_level, src_node_idx)
                     key = f"from_{key_str}"
-                    inter_vars[key] = None # ★
+                    inter_vars[key] = None 
         return intra_vars, inter_vars
 
     def _define_sharing_variables(self):
