@@ -1,7 +1,4 @@
 import os
-# config.py から設定値をインポート (レポートに記載するため)
-from config import MAX_SHARING_VOLUME, MAX_LEVEL_DIFF, MAX_MIXER_SIZE
-# 可視化クラスをインポート
 from .visualizer import SolutionVisualizer
 
 class SolutionReporter:
@@ -13,14 +10,20 @@ class SolutionReporter:
     `base_runner.py` の `_run_single_optimization` から呼び出されます。
     """
 
-    def __init__(self, problem, model, objective_mode="waste", enable_visualization=True):
+    def __init__(
+        self,
+        problem,
+        model,
+        objective_mode="waste",
+        enable_visualization=True,
+        optimization_settings=None,  # <-- 追加
+    ):
         """
         コンストラクタ。
 
         Args:
             problem (MTWMProblem): 最適化問題の定義オブジェクト。
-            model (OrToolsSolutionModel or similar): ソルバーの解をラップしたオブジェクト。
-                                                   (解が見つからなかった場合は None)
+            model (OrToolsSolutionModel or similar): ソルバーの解をラップしたオブジェクト。(解が見つからなかった場合は None)
             objective_mode (str): 最適化の目的 ('waste', 'operations', 'reagents')。
             enable_visualization (bool): 可視化 (PNG生成) を行うかどうか。
         """
@@ -28,6 +31,18 @@ class SolutionReporter:
         self.model = model  # これは OrToolsSolutionModel オブジェクト
         self.objective_mode = objective_mode
         self.enable_visualization = enable_visualization
+
+        # デフォルト値を定義
+        default_settings = {
+            "max_sharing_volume": "No limit",
+            "max_level_diff": "No limit",
+            "max_mixer_size": "N/A",
+        }
+
+        # 受け取った設定で上書き
+        if optimization_settings:
+            default_settings.update(optimization_settings)
+        self.optimization_settings = default_settings
 
     def generate_full_report(self, min_value, elapsed_time, output_dir):
         """
@@ -131,14 +146,16 @@ class SolutionReporter:
                 ]
             )
             
+        settings = self.optimization_settings
+        
         # --- 最適化設定 (config.py の内容) ---
         content.extend(
             [
                 "\n--- Optimization Settings ---",
                 f"Optimization Mode: {self.objective_mode.upper()}",
-                f"Max Sharing Volume: {MAX_SHARING_VOLUME or 'No limit'}",
-                f"Max Level Difference: {MAX_LEVEL_DIFF or 'No limit'}",
-                f"Max Mixer Size: {MAX_MIXER_SIZE}",
+                f"Max Sharing Volume: {settings['max_sharing_volume']}",
+                f"Max Level Difference: {settings['max_level_diff']}",
+                f"Max Mixer Size: {settings['max_mixer_size']}",
                 "-" * 28,
                 f"\n{objective_str}: {min_value}", # 目的変数の最小値
             ]

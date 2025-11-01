@@ -1,4 +1,4 @@
-# runners/base_runner.py
+# kajiwara727/mtwm_timeimprovement/MTWM_TimeImprovement-0d2eefb65d1684137a3e8cc5d9b2ce18880a795d/runners/base_runner.py
 import os
 from abc import ABC, abstractmethod  # 抽象基底クラス(ABC)をインポート
 
@@ -137,13 +137,20 @@ class BaseRunner(ABC):  # 抽象基底クラス(ABC)を継承
         # --- 6. SolutionReporterを初期化 ---
         # (reporting/reporter.py)
         
-        # ソルバーが見つけた解(best_model)と問題定義(problem)を渡し、
-        # 最終レポート（summary.txt や .png）を生成する準備
+        # [MODIFIED] SolutionReporter に渡すための設定辞書を作成
+        report_settings = {
+            "max_sharing_volume": self.config.MAX_SHARING_VOLUME or "No limit",
+            "max_level_diff": self.config.MAX_LEVEL_DIFF or "No limit",
+            "max_mixer_size": self.config.MAX_MIXER_SIZE,
+        }
+        
+        # [MODIFIED] インスタンス化の際に optimization_settings を渡す
         reporter = SolutionReporter(
             problem,
             best_model,
             objective_mode=self.config.OPTIMIZATION_MODE,
-            enable_visualization=self.config.ENABLE_VISUALIZATION # 可視化ON/OFF
+            enable_visualization=self.config.ENABLE_VISUALIZATION,
+            optimization_settings=report_settings,  # <-- 追加
         )
 
         # サマリーレポート用に、各メトリクスの初期値を None に設定
