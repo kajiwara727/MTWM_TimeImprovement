@@ -25,13 +25,16 @@ def parse_summary_file(file_name):
                     waste_match = re.search(r"Total Waste Generated: (\d+\.?\d*)", line)
                     if not waste_match:
                         waste_match = re.search(r"Minimum Waste Found: (\d+\.?\d*)", line)
-                    
                     if waste_match:
                         run_data[current_run_name]['waste'] = float(waste_match.group(1))
 
                     reagent_match = re.search(r"Total Reagent Units: (\d+)", line)
                     if reagent_match:
                         run_data[current_run_name]['reagents'] = int(reagent_match.group(1))
+
+                    ops_match = re.search(r"(?:Total )?Operations: (\d+)", line)
+                    if ops_match:
+                         run_data[current_run_name]['ops'] = int(ops_match.group(1))
                         
     except FileNotFoundError:
         print(f"エラー: ファイル '{file_name}' が見つかりません。")
@@ -45,8 +48,9 @@ def parse_summary_file(file_name):
         return None
         
     incomplete_runs = []
+    required_keys = ['waste', 'reagents', 'ops']
     for run, data in run_data.items():
-        if 'waste' not in data or 'reagents' not in data:
+        if not all(key in data for key in required_keys):
             incomplete_runs.append(run)
             
     if incomplete_runs:
@@ -54,6 +58,38 @@ def parse_summary_file(file_name):
             del run_data[run]
 
     return run_data
+
+def print_ops_analysis(data_pairs):
+    """
+    操作数分析を表示するヘルパー関数
+    """
+    if not data_pairs:
+        print("  該当するケースはありません。")
+        return
+
+    # 廃棄削減量(降順) -> 試薬削減量(降順) でソート
+    sorted_pairs = sorted(data_pairs.items(), key=lambda x: (x[0][0], x[0][1]), reverse=True)
+    
+    for (w_red, r_red), ops_red_list in sorted_pairs:
+        # 廃棄の表示
+        w_text = f"{w_red:.1f}減" if w_red > 0 else (f"{abs(w_red):.1f}増" if w_red < 0 else "維持(±0)")
+        # 試薬の表示
+        r_text = f"{r_red}減" if r_red > 0 else (f"{abs(r_red)}増" if r_red < 0 else "維持(±0)")
+        
+        print(f"\n[ケース] 廃棄: {w_text}, 試薬: {r_text} (合計 {len(ops_red_list)} 件)")
+        
+        ops_counts = defaultdict(int)
+        for op_red in ops_red_list:
+            ops_counts[op_red] += 1
+        
+        sorted_ops = sorted(ops_counts.items(), key=lambda x: x[0], reverse=True)
+        for op_red, count in sorted_ops:
+            if op_red > 0:
+                print(f"  - 操作数 {op_red} 削減: {count} 件")
+            elif op_red < 0:
+                print(f"  - 操作数 {abs(op_red)} 増加: {count} 件")
+            else:
+                print(f"  - 操作数 維持 (±0): {count} 件")
 
 # --- メインの処理 ---
 
@@ -94,7 +130,7 @@ else:
 
 
 print(f"\n従来手法ファイル(Previous): {previous_file}")
-print(f"提案手法ファイル(Proposed): {proposed_file}\n")
+print(f"提案手法ファイル(Proposed): {proposed_file}")
 
 # 2. ファイルのパース
 previous_data = parse_summary_file(previous_file)
@@ -110,39 +146,31 @@ else:
     else:
         print(f"合計 {len(common_runs)} 件の共通ランを比較します。")
 
-        waste_reduced_count = 0
-        waste_and_reagent_reduced_count = 0
-        waste_reduction_amounts = defaultdict(int)
-        reduction_pairs = defaultdict(int)
+        # 分析用データの格納庫
+        ops_analysis_positive = defaultdict(list) # 廃棄削減 > 0
+        ops_analysis_negative = defaultdict(list) # 廃棄削減 <= 0
+        
         comparison_results = []
 
         for run_name in common_runs:
-            if run_name not in previous_data or run_name not in proposed_data:
-                continue
             prev_run = previous_data[run_name]
             prop_run = proposed_data[run_name]
-            
-            if 'waste' not in prev_run or 'reagents' not in prev_run or \
-               'waste' not in prop_run or 'reagents' not in prop_run:
-                continue
 
             prev_waste = prev_run['waste']
             prop_waste = prop_run['waste']
             prev_reagents = prev_run['reagents']
             prop_reagents = prop_run['reagents']
+            prev_ops = prev_run['ops']
+            prop_ops = prop_run['ops']
 
-            # 削減量の計算
             waste_reduction = prev_waste - prop_waste
             reagent_reduction = prev_reagents - prop_reagents
+            ops_reduction = prev_ops - prop_ops
             
             # 勝者判定
             waste_winner = "DRAW"
             if prop_waste < prev_waste:
                 waste_winner = "WIN"
-                waste_reduced_count += 1
-                waste_reduction_amounts[waste_reduction] += 1
-                if prop_reagents < prev_reagents:
-                    waste_and_reagent_reduced_count += 1
             elif prev_waste < prop_waste:
                 waste_winner = "LOSE"
 
@@ -152,9 +180,11 @@ else:
             elif prev_reagents < prop_reagents:
                 reagent_winner = "LOSE"
 
-            if waste_reduction >= 0 and reagent_reduction >= 0:
-                if waste_reduction > 0 or reagent_reduction > 0:
-                    reduction_pairs[(waste_reduction, reagent_reduction)] += 1
+            # 分析用にデータを振り分け
+            if waste_reduction > 0:
+                ops_analysis_positive[(waste_reduction, reagent_reduction)].append(ops_reduction)
+            else:
+                ops_analysis_negative[(waste_reduction, reagent_reduction)].append(ops_reduction)
 
             comparison_results.append({
                 'Run Name': run_name,
@@ -165,40 +195,20 @@ else:
                 'Reagent Result': reagent_winner,
                 'Reagent Reduction': reagent_reduction,
                 'Proposed Reagents': prop_reagents,
-                'Previous Reagents': prev_reagents
+                'Previous Reagents': prev_reagents,
             })
 
-        # 結果サマリー出力
-        print("\n--- 比較結果サマリー (提案手法 vs 従来手法) ---")
-        print(f"\n[要求1] 廃棄量が減ったケース (WIN):")
-        print(f"  {len(common_runs)} 件中 {waste_reduced_count} 件")
+        # --- 分析結果の表示 ---
+        print_ops_analysis(ops_analysis_positive)
+        print_ops_analysis(ops_analysis_negative)
 
-        print(f"\n[要求2] 廃棄量の削減量ごとのケース数:")
-        if not waste_reduction_amounts:
-            print("  なし")
-        else:
-            sorted_reductions = sorted(waste_reduction_amounts.items(), reverse=True)
-            for amount, count in sorted_reductions:
-                print(f"  削減量 {amount:.1f}: {count} 件")
-
-        print(f"\n[要求3] 廃棄量と試薬数の両方を減らせたケース (Double WIN):")
-        print(f"  {waste_reduced_count} 件中 {waste_and_reagent_reduced_count} 件")
-
-        print(f"\n[要求4] 廃棄液滴と試薬数の削減量ペアごとのケース数 (両方維持以上):")
-        if not reduction_pairs:
-            print("  なし")
-        else:
-            sorted_pairs = sorted(reduction_pairs.items(), key=lambda x: (x[0][0], x[0][1]), reverse=True)
-            for (w_red, r_red), count in sorted_pairs:
-                print(f"  廃棄 {w_red:.1f}減, 試薬 {r_red}減 : {count} 件")
-        
         # CSVファイル出力
         try:
             output_dir = "CSV_Result"
             os.makedirs(output_dir, exist_ok=True)
 
             base_name = os.path.splitext(os.path.basename(proposed_file))[0]
-            output_csv_path = os.path.join(output_dir, f"comparison_result_{base_name}.csv")
+            output_csv_path = os.path.join(output_dir, f"{base_name}.csv")
             
             df_results = pd.DataFrame(comparison_results)
 
@@ -215,8 +225,6 @@ else:
             df_results = df_results[existing_cols]
 
             df_results.to_csv(output_csv_path, index=False, encoding='utf-8-sig')
-            print(f"\n--- 詳細データ ---")
-            print(f"詳細な比較結果を '{output_csv_path}' に保存しました。")
-            print("(WINが上に来るようにソートされています)")
+            print(f"\n詳細な比較結果を '{output_csv_path}' に保存しました。")
         except Exception as e:
             print(f"エラー: CSVファイルへの保存中にエラーが発生しました: {e}")
