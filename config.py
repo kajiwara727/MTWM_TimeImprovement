@@ -1,6 +1,6 @@
 # 実行名を定義します。出力ディレクトリの名前の一部として使用されます。
 # 例: "My_First_Run" -> "My_First_Run_xxxx" のようなディレクトリが生成される
-RUN_NAME = "Original_Test"
+RUN_NAME = ""
 
 # 混合ツリーの階層構造（factors）を決定するモードを選択します。
 # 'manual': TARGETS_FOR_MANUAL_MODE で定義された factors を手動で設定します。
@@ -8,7 +8,7 @@ RUN_NAME = "Original_Test"
 # 'auto_permutations': 'auto' で計算された factors の全順列を試し、最適な階層構造を探します。
 # 'random': RANDOM_... 設定に基づいてランダムなシナリオを複数回実行します。
 # 'file_load': CONFIG_LOAD_FILEで指定されたJSONファイルから設定を読み込みます。
-FACTOR_EXECUTION_MODE = "file_load"
+FACTOR_EXECUTION_MODE = "random"
 # 最適化の目的を設定します。
 # "waste": 廃棄物量の最小化を目指します。（最も重要な目的）
 # "operations": 混合操作の総回数の最小化を目指します。（プロセス簡略化）
@@ -18,7 +18,7 @@ OPTIMIZATION_MODE = "waste"
 # --- 出力設定 ---
 # Trueに設定すると、最適化完了後に混合ツリーの可視化グラフ (PNG画像) を生成します。
 # Falseに設定すると、グラフ生成をスキップし、処理時間を短縮できます。
-ENABLE_VISUALIZATION = True
+ENABLE_VISUALIZATION = False
 
 # 'file_load' モードで使用する設定ファイル名を指定します。
 # ランダム実行で生成したファイル名 (例: "manual-check_eb8386bc_1/random_configs.json") を設定すると、
@@ -75,10 +75,10 @@ ENABLE_FINAL_PRODUCT_SHARING = False
 # --- 'random' モード用設定 ---
 # (RANDOM_SETTINGS 辞書を廃止し、トップレベルの変数に)
 
-# ランダムシナリオにおける試薬の種類数 (例: 3種類)
-RANDOM_T_REAGENTS = 3
 # ランダムシナリオにおけるターゲット（目標混合液）の数 (例: 3ターゲット)
 RANDOM_N_TARGETS = 4
+# ランダムシナリオにおける試薬の種類数 (例: 3種類)
+RANDOM_T_REAGENTS = 3
 # 生成・実行するランダムシナリオの総数 (例: 100回)
 RANDOM_K_RUNS = 30
 
