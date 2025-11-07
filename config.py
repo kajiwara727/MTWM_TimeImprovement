@@ -1,6 +1,6 @@
 # 実行名を定義します。出力ディレクトリの名前の一部として使用されます。
 # 例: "My_First_Run" -> "My_First_Run_xxxx" のようなディレクトリが生成される
-RUN_NAME = ""
+RUN_NAME = "Original_Test"
 
 # 混合ツリーの階層構造（factors）を決定するモードを選択します。
 # 'manual': TARGETS_FOR_MANUAL_MODE で定義された factors を手動で設定します。
@@ -8,7 +8,7 @@ RUN_NAME = ""
 # 'auto_permutations': 'auto' で計算された factors の全順列を試し、最適な階層構造を探します。
 # 'random': RANDOM_... 設定に基づいてランダムなシナリオを複数回実行します。
 # 'file_load': CONFIG_LOAD_FILEで指定されたJSONファイルから設定を読み込みます。
-FACTOR_EXECUTION_MODE = "random"
+FACTOR_EXECUTION_MODE = "file_load"
 # 最適化の目的を設定します。
 # "waste": 廃棄物量の最小化を目指します。（最も重要な目的）
 # "operations": 混合操作の総回数の最小化を目指します。（プロセス簡略化）
@@ -30,7 +30,7 @@ CONFIG_LOAD_FILE = "random_configs.json"
 # ソルバーが使用するCPUコア（ワーカー）の最大数を設定します。
 # 共有マシンの場合は、 2 や 4 などの低い値に設定することを推奨します。
 # None に設定すると、Or-Toolsが利用可能な全コアを使用します。
-MAX_CPU_WORKERS = 32
+MAX_CPU_WORKERS = None
 
 # 追加: (1回の実行（1パターン）あたりの最大計算時間（秒）)
 # ソルバーが最適性の証明などでスタックしても、ここで設定した秒数が経過すると
@@ -78,9 +78,14 @@ ENABLE_FINAL_PRODUCT_SHARING = False
 # ランダムシナリオにおける試薬の種類数 (例: 3種類)
 RANDOM_T_REAGENTS = 3
 # ランダムシナリオにおけるターゲット（目標混合液）の数 (例: 3ターゲット)
-RANDOM_N_TARGETS = 3
+RANDOM_N_TARGETS = 4
 # 生成・実行するランダムシナリオの総数 (例: 100回)
-RANDOM_K_RUNS = 10
+RANDOM_K_RUNS = 30
+
+# オプション3: デフォルト値
+# 上記の `SEQUENCE` と `CANDIDATES` が両方とも空のリストの場合、
+# このデフォルト値が全てのターゲットで使用されます。
+RANDOM_S_RATIO_SUM_DEFAULT = 18
 
 # --- 混合比和の生成ルール（以下のいずれか1つが使用されます） ---
 # 以下の設定は、`runners/random_runner.py` によって上から順に評価され、
@@ -102,23 +107,55 @@ RANDOM_S_RATIO_SUM_CANDIDATES = [
     # 18, 24, 30, 36
 ]
 
-# オプション3: デフォルト値
-# 上記の `SEQUENCE` と `CANDIDATES` が両方とも空のリストの場合、
-# このデフォルト値が全てのターゲットで使用されます。
-RANDOM_S_RATIO_SUM_DEFAULT = 135
 
 # --- 'auto' / 'auto_permutations' モード用設定 ---
 # 'auto'系モードでは、'factors' (混合階層) を指定する必要はありません。
 # 'ratios' (混合比率) のみ定義します。
 TARGETS_FOR_AUTO_MODE = [
-    # {'name': 'Target 1', 'ratios': [102, 26, 3, 3, 122]},
-    # {'name': 'Target 1', 'ratios': [2, 3, 7]},
-    # {'name': 'Target 2', 'ratios': [1, 5, 6]},
-    # {'name': 'Target 3', 'ratios': [4, 3, 5]},
-    # {'name': 'Target 1', 'ratios': [45, 26, 64]},
-    {'name': 'Target 1', 'ratios': [20,5,110]},
-    {'name': 'Target 2', 'ratios': [93,21,21]},
-    {'name': 'Target 3', 'ratios': [46,74,15]},
+    # Simple
+    # {'name': 'Target 1', 'ratios': [2,11,5]},
+    # {'name': 'Target 2', 'ratios': [12,5,1]},
+    # {'name': 'Target 3', 'ratios': [5,6,14]}
+
+     # すべて12:12:1の場合
+    # {'name': 'Target 1', 'ratios': [12,12,1]},
+    # {'name': 'Target 2', 'ratios': [12,12,1]},
+    # {'name': 'Target 3', 'ratios': [12,12,1]}
+
+    # すべて97:97:6の場合
+    # {'name': 'Target 1', 'ratios': [97,97,6]},
+    # {'name': 'Target 2', 'ratios': [97,97,6]},
+    # {'name': 'Target 3', 'ratios': [97,97,6]}
+
+     # すべて49:49:2の場合
+    # {'name': 'Target 1', 'ratios': [49,49,2]},
+    # {'name': 'Target 2', 'ratios': [49,49,2]},
+    # {'name': 'Target 3', 'ratios': [49,49,2]}
+
+    # 49:98:147
+    # {'name': 'Target 1', 'ratios': [26,10,13]},
+    # {'name': 'Target 2', 'ratios': [53,20,25]},
+    # {'name': 'Target 3', 'ratios': [79,30,38]},
+
+    # 49:98:147_Second
+    # {'name': 'Target 1', 'ratios': [23,13,13]},
+    # {'name': 'Target 2', 'ratios': [46,27,25]},
+    # {'name': 'Target 3', 'ratios': [69,40,38]},
+
+    # 49:98:147_Third
+    # {'name': 'Target 1', 'ratios': [19,17,13]},
+    # {'name': 'Target 2', 'ratios': [40,33,25]},
+    # {'name': 'Target 3', 'ratios': [59,50,38]},
+
+    # TimeTest
+    # {'name': 'Target 1', 'ratios': [2, 12,3,1]},
+    # {'name': 'Target 2', 'ratios': [5,3,4,6]},
+    # {'name': 'Target 3', 'ratios': [7,3,7,1]},
+    # {'name': 'Target 4', 'ratios': [9,2,6,1]},
+    # {'name': 'Target 5', 'ratios': [13,1,1,3]},
+
+    # {'name': 'Target 2', 'ratios': [93,21,21]},
+    # {'name': 'Target 3', 'ratios': [46,74,15]},
     # {'name': 'Target 3', 'ratios': [3, 5, 10]},
     # {'name': 'Target 4', 'ratios': [7, 7, 4]},
     # {'name': 'Target 2', 'ratios': [60, 25, 5]},
@@ -132,9 +169,15 @@ TARGETS_FOR_AUTO_MODE = [
 # 'factors' の積は、'ratios' の合計値と一致する必要があります。
 # また、'factors' の各要素は MAX_MIXER_SIZE 以下でなければなりません。
 TARGETS_FOR_MANUAL_MODE = [
-    # {'name': 'Target 1', 'ratios': [1,8,9], 'factors': [3, 3, 3, 5]},
-    # {'name': 'Target 2', 'ratios': [2,1,15], 'factors': [3, 3, 3, 5]},
-    # {'name': 'Target 1', 'ratios': [10, 55, 25], 'factors': [3, 5, 3, 2]},
+    # {'name': 'Target 1', 'ratios': [23,13,13]},
+    # {'name': 'Target 2', 'ratios': [46,27,25]},
+    # {'name': 'Target 3', 'ratios': [69,40,38]},
+
+    # 49:98:147_Second
+    # {'name': 'Target 1', 'ratios': [23,13,13], 'factors': [7,7]},
+    # {'name': 'Target 2', 'ratios': [46,27,25], 'factors': [7,2,7]},
+    # {'name': 'Target 3', 'ratios': [69,40,38], 'factors': [7,3,7]},
+
     # {'name': 'Target 1', 'ratios': [6, 33, 15], 'factors': [3, 3, 3, 2]},
     # {'name': 'Target 1', 'ratios': [2, 3, 7], 'factors': [3, 2, 2]},
     # {'name': 'Target 2', 'ratios': [1, 5, 6], 'factors': [3, 2, 2]},
@@ -146,10 +189,10 @@ TARGETS_FOR_MANUAL_MODE = [
     # {'name': 'Target 3', 'ratios': [5, 6, 14], 'factors': [5, 5]},
     # {'name': 'Target 4', 'ratios': [6, 33, 36], 'factors': [3, 5, 5]},
     # {'name': 'Target 1', 'ratios': [102, 26, 3, 3, 122], 'factors': [4, 4, 4, 4]},
-    {"name": "Target 1", "ratios": [2, 11, 5], "factors": [3, 3, 2]},
+    # {"name": "Target 1", "ratios": [2, 11, 5], "factors": [3, 3, 2]},
     # {'name': 'Target 2', 'ratios': [12, 5, 1], 'factors': [3, 3, 2]},
     # {'name': 'Target 3', 'ratios': [5, 6, 14], 'factors': [5, 5]},
     # {'name': 'Target 1', 'ratios': [10, 55, 25], 'factors': [5, 3, 3, 2]},
-    {"name": "Target 2", "ratios": [60, 25, 5], "factors": [5, 3, 3, 2]},
+    # {"name": "Target 2", "ratios": [60, 25, 5], "factors": [5, 3, 3, 2]},
     # {'name': 'Target 3', 'ratios': [15, 18, 42], 'factors': [3, 5, 5]}
 ]
