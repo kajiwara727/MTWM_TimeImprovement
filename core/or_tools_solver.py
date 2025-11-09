@@ -504,7 +504,6 @@ class OrToolsSolver:
             current_product_bound = p_src * max_w
 
             prod_name = f"Prod_intra_{node_name_prefix}_r{reagent_idx}_from_{key}"
-            # 上限を MAX_PRODUCT_BOUND から current_product_bound に変更
             product_var = self.model.NewIntVar(0, current_product_bound, prod_name)
             self.model.AddMultiplicationEquality(product_var, [r_src, w_var])
             
@@ -537,7 +536,7 @@ class OrToolsSolver:
             current_product_bound = p_src * max_w
             
             prod_name = f"Prod_inter_{node_name_prefix}_r{reagent_idx}_from_{key}"
-            product_var = self.model.NewIntVar(0, MAX_PRODUCT_BOUND, prod_name)
+            product_var = self.model.NewIntVar(0, current_product_bound, prod_name)
             self.model.AddMultiplicationEquality(product_var, [r_src, w_var])
             rhs_terms.append(product_var * (p_dst // p_src))
         return rhs_terms

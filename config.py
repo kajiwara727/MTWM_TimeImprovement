@@ -36,7 +36,7 @@ MAX_CPU_WORKERS = None
 # ソルバーが最適性の証明などでスタックしても、ここで設定した秒数が経過すると
 # 自動的に打ち切られ、次のパターンの計算に進みます。
 # None または 0 に設定すると、時間無制限になります。
-MAX_TIME_PER_RUN_SECONDS = None
+MAX_TIME_PER_RUN_SECONDS = 10000
 
 # 追加: (早期停止のための「絶対ギャップ」)
 # 目的（廃棄物など）は整数であるため、 0.99 のような「1未満」の値を設定すると、
@@ -78,9 +78,9 @@ ENABLE_FINAL_PRODUCT_SHARING = False
 # ランダムシナリオにおけるターゲット（目標混合液）の数 (例: 3ターゲット)
 RANDOM_N_TARGETS = 4
 # ランダムシナリオにおける試薬の種類数 (例: 3種類)
-RANDOM_T_REAGENTS = 3
+RANDOM_T_REAGENTS = 7
 # 生成・実行するランダムシナリオの総数 (例: 100回)
-RANDOM_K_RUNS = 30
+RANDOM_K_RUNS = 50
 
 # オプション3: デフォルト値
 # 上記の `SEQUENCE` と `CANDIDATES` が両方とも空のリストの場合、
