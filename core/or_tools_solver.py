@@ -304,11 +304,9 @@ class OrToolsSolver:
         self._set_ratio_sum_constraints()
         self._set_leaf_node_constraints()
         self._set_mixer_capacity_constraints()
-        # self._set_range_constraints() # 不要
         self._set_activity_constraints()
         self._set_peer_mixing_constraints()
         self._set_symmetry_breaking_constraints()
-        
         self.objective_variable = self._set_objective_function()
 
     def _define_or_tools_variables(self):

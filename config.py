@@ -49,7 +49,7 @@ ABSOLUTE_GAP_LIMIT = 0.99
 # ノード間で共有（中間液を融通）できる液量の最大値を設定します。
 # 例えば 1 に設定すると、共有は「1単位ずつ」に制限されます。
 # Noneの場合は無制限です。
-MAX_SHARING_VOLUME = None
+MAX_SHARING_VOLUME = 1
 
 # 中間液を共有する際の、供給元と供給先の階層レベル（level）の差の最大値を設定します。
 # 例えば 2 に設定すると、level 3 のノードは level 1 のノードにしか供給できません。
@@ -76,11 +76,11 @@ ENABLE_FINAL_PRODUCT_SHARING = False
 # (RANDOM_SETTINGS 辞書を廃止し、トップレベルの変数に)
 
 # ランダムシナリオにおけるターゲット（目標混合液）の数 (例: 3ターゲット)
-RANDOM_N_TARGETS = 4
+RANDOM_N_TARGETS = 5
 # ランダムシナリオにおける試薬の種類数 (例: 3種類)
-RANDOM_T_REAGENTS = 7
+RANDOM_T_REAGENTS = 3
 # 生成・実行するランダムシナリオの総数 (例: 100回)
-RANDOM_K_RUNS = 50
+RANDOM_K_RUNS = 5
 
 # オプション3: デフォルト値
 # 上記の `SEQUENCE` と `CANDIDATES` が両方とも空のリストの場合、
