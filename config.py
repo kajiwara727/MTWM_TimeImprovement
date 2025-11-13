@@ -1,6 +1,6 @@
 # 実行名を定義します。出力ディレクトリの名前の一部として使用されます。
 # 例: "My_First_Run" -> "My_First_Run_xxxx" のようなディレクトリが生成される
-RUN_NAME = ""
+RUN_NAME = "試薬数削減確認"
 
 # 混合ツリーの階層構造（factors）を決定するモードを選択します。
 # 'manual': TARGETS_FOR_MANUAL_MODE で定義された factors を手動で設定します。
@@ -8,7 +8,7 @@ RUN_NAME = ""
 # 'auto_permutations': 'auto' で計算された factors の全順列を試し、最適な階層構造を探します。
 # 'random': RANDOM_... 設定に基づいてランダムなシナリオを複数回実行します。
 # 'file_load': CONFIG_LOAD_FILEで指定されたJSONファイルから設定を読み込みます。
-FACTOR_EXECUTION_MODE = "random"
+FACTOR_EXECUTION_MODE = "auto"
 # 最適化の目的を設定します。
 # "waste": 廃棄物量の最小化を目指します。（最も重要な目的）
 # "operations": 混合操作の総回数の最小化を目指します。（プロセス簡略化）
@@ -18,7 +18,7 @@ OPTIMIZATION_MODE = "waste"
 # --- 出力設定 ---
 # Trueに設定すると、最適化完了後に混合ツリーの可視化グラフ (PNG画像) を生成します。
 # Falseに設定すると、グラフ生成をスキップし、処理時間を短縮できます。
-ENABLE_VISUALIZATION = False
+ENABLE_VISUALIZATION =True
 
 # 'file_load' モードで使用する設定ファイル名を指定します。
 # ランダム実行で生成したファイル名 (例: "manual-check_eb8386bc_1/random_configs.json") を設定すると、
@@ -36,7 +36,7 @@ MAX_CPU_WORKERS = None
 # ソルバーが最適性の証明などでスタックしても、ここで設定した秒数が経過すると
 # 自動的に打ち切られ、次のパターンの計算に進みます。
 # None または 0 に設定すると、時間無制限になります。
-MAX_TIME_PER_RUN_SECONDS = 10000
+MAX_TIME_PER_RUN_SECONDS = None
 
 # 追加: (早期停止のための「絶対ギャップ」)
 # 目的（廃棄物など）は整数であるため、 0.99 のような「1未満」の値を設定すると、
@@ -49,7 +49,7 @@ ABSOLUTE_GAP_LIMIT = 0.99
 # ノード間で共有（中間液を融通）できる液量の最大値を設定します。
 # 例えば 1 に設定すると、共有は「1単位ずつ」に制限されます。
 # Noneの場合は無制限です。
-MAX_SHARING_VOLUME = 1
+MAX_SHARING_VOLUME = None
 
 # 中間液を共有する際の、供給元と供給先の階層レベル（level）の差の最大値を設定します。
 # 例えば 2 に設定すると、level 3 のノードは level 1 のノードにしか供給できません。
@@ -76,16 +76,16 @@ ENABLE_FINAL_PRODUCT_SHARING = False
 # (RANDOM_SETTINGS 辞書を廃止し、トップレベルの変数に)
 
 # ランダムシナリオにおけるターゲット（目標混合液）の数 (例: 3ターゲット)
-RANDOM_N_TARGETS = 5
+RANDOM_N_TARGETS = 2
 # ランダムシナリオにおける試薬の種類数 (例: 3種類)
 RANDOM_T_REAGENTS = 3
 # 生成・実行するランダムシナリオの総数 (例: 100回)
-RANDOM_K_RUNS = 5
+RANDOM_K_RUNS = 20
 
 # オプション3: デフォルト値
 # 上記の `SEQUENCE` と `CANDIDATES` が両方とも空のリストの場合、
 # このデフォルト値が全てのターゲットで使用されます。
-RANDOM_S_RATIO_SUM_DEFAULT = 18
+RANDOM_S_RATIO_SUM_DEFAULT = 135
 
 # --- 混合比和の生成ルール（以下のいずれか1つが使用されます） ---
 # 以下の設定は、`runners/random_runner.py` によって上から順に評価され、
@@ -112,6 +112,10 @@ RANDOM_S_RATIO_SUM_CANDIDATES = [
 # 'auto'系モードでは、'factors' (混合階層) を指定する必要はありません。
 # 'ratios' (混合比率) のみ定義します。
 TARGETS_FOR_AUTO_MODE = [
+    # 試薬数削減確認
+    {'name': 'Target 1', 'ratios': [3,10,1,4]},
+    {'name': 'Target 2', 'ratios': [6,3,5,4]},
+
     # Simple
     # {'name': 'Target 1', 'ratios': [2,11,5]},
     # {'name': 'Target 2', 'ratios': [12,5,1]},

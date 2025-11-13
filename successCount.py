@@ -22,19 +22,30 @@ def parse_summary_file(file_name):
                         run_data[current_run_name] = {}
 
                 if current_run_name:
-                    waste_match = re.search(r"Total Waste Generated: (\d+\.?\d*)", line)
-                    if not waste_match:
-                        waste_match = re.search(r"Minimum Waste Found: (\d+\.?\d*)", line)
-                    if waste_match:
-                        run_data[current_run_name]['waste'] = float(waste_match.group(1))
+                    # --- MOD: Start ---
+                    # 各項目（waste, reagents, ops）が辞書に存在しない（まだセットされていない）場合のみ、
+                    # 正規表現にマッチしたら値をセットする（上書き防止）
 
-                    reagent_match = re.search(r"Total Reagent Units: (\d+)", line)
-                    if reagent_match:
-                        run_data[current_run_name]['reagents'] = int(reagent_match.group(1))
+                    # Waste
+                    if 'waste' not in run_data[current_run_name]:
+                        waste_match = re.search(r"Total Waste Generated: (\d+\.?\d*)", line)
+                        if not waste_match:
+                            waste_match = re.search(r"Minimum Waste Found: (\d+\.?\d*)", line)
+                        if waste_match:
+                            run_data[current_run_name]['waste'] = float(waste_match.group(1))
 
-                    ops_match = re.search(r"(?:Total )?Operations: (\d+)", line)
-                    if ops_match:
-                         run_data[current_run_name]['ops'] = int(ops_match.group(1))
+                    # Reagents
+                    if 'reagents' not in run_data[current_run_name]:
+                        reagent_match = re.search(r"Total Reagent Units: (\d+)", line)
+                        if reagent_match:
+                            run_data[current_run_name]['reagents'] = int(reagent_match.group(1))
+
+                    # Ops
+                    if 'ops' not in run_data[current_run_name]:
+                        ops_match = re.search(r"(?:Total )?Operations: (\d+)", line)
+                        if ops_match:
+                             run_data[current_run_name]['ops'] = int(ops_match.group(1))
+                    # --- MOD: End ---
                         
     except FileNotFoundError:
         print(f"エラー: ファイル '{file_name}' が見つかりません。")
@@ -54,21 +65,24 @@ def parse_summary_file(file_name):
             incomplete_runs.append(run)
             
     if incomplete_runs:
+        print(f"警告: データが不完全なため、以下のランを除外しました: {', '.join(incomplete_runs)}")
         for run in incomplete_runs:
             del run_data[run]
 
     return run_data
 
-def print_ops_analysis(data_pairs):
+def print_ops_analysis(data_pairs, sort_reverse=True): # MOD: sort_reverse引数を追加
     """
     操作数分析を表示するヘルパー関数
+    sort_reverse: True=降順 (削減量大), False=昇順 (増加量大)
     """
     if not data_pairs:
-        print("  該当するケースはありません。")
+        print("   該当するケースはありません。")
         return
 
-    # 廃棄削減量(降順) -> 試薬削減量(降順) でソート
-    sorted_pairs = sorted(data_pairs.items(), key=lambda x: (x[0][0], x[0][1]), reverse=True)
+    # 廃棄削減量(引数で指定) -> 試薬削減量(引数で指定) でソート
+    # 元のロジック (タプル全体でのソート) を維持
+    sorted_pairs = sorted(data_pairs.items(), key=lambda x: (x[0][0], x[0][1]), reverse=sort_reverse)
     
     for (w_red, r_red), ops_red_list in sorted_pairs:
         # 廃棄の表示
@@ -85,11 +99,11 @@ def print_ops_analysis(data_pairs):
         sorted_ops = sorted(ops_counts.items(), key=lambda x: x[0], reverse=True)
         for op_red, count in sorted_ops:
             if op_red > 0:
-                print(f"  - 操作数 {op_red} 削減: {count} 件")
+                print(f"   - 操作数 {op_red} 削減: {count} 件")
             elif op_red < 0:
-                print(f"  - 操作数 {abs(op_red)} 増加: {count} 件")
+                print(f"   - 操作数 {abs(op_red)} 増加: {count} 件")
             else:
-                print(f"  - 操作数 維持 (±0): {count} 件")
+                print(f"   - 操作数 維持 (±0): {count} 件")
 
 # --- メインの処理 ---
 
@@ -113,7 +127,7 @@ elif len(proposed_files_found) == 1:
 else:
     print(f"パターン '{search_pattern}' に一致するファイルが複数見つかりました:")
     for i, f in enumerate(proposed_files_found):
-        print(f"  [{i+1}] {f}")
+        print(f"   [{i+1}] {f}")
     
     selected_index = -1
     while selected_index < 0 or selected_index >= len(proposed_files_found):
@@ -144,7 +158,7 @@ else:
     if not common_runs:
         print("比較対象の共通ランが見つかりませんでした。")
     else:
-        print(f"合計 {len(common_runs)} 件の共通ランを比較します。")
+        print(f"\n合計 {len(common_runs)} 件の共通ランを比較します。")
 
         # 分析用データの格納庫
         ops_analysis_positive = defaultdict(list) # 廃棄削減 > 0
@@ -196,11 +210,17 @@ else:
                 'Reagent Reduction': reagent_reduction,
                 'Proposed Reagents': prop_reagents,
                 'Previous Reagents': prev_reagents,
+                'Ops Reduction': ops_reduction, # CSV出力用にOps Reductionも追加
+                'Proposed Ops': prop_ops,
+                'Previous Ops': prev_ops
             })
 
         # --- 分析結果の表示 ---
-        print_ops_analysis(ops_analysis_positive)
-        print_ops_analysis(ops_analysis_negative)
+        print("\n--- 廃棄削減 ( > 0 ) のケース [削減量が多い順] ---")
+        print_ops_analysis(ops_analysis_positive, sort_reverse=True) # MOD: 降順 (削減量大)
+
+        print("\n--- 廃棄維持・増加 ( <= 0 ) のケース [増加量が多い順] ---")
+        print_ops_analysis(ops_analysis_negative, sort_reverse=False) # MOD: 昇順 (増加量大)
 
         # CSVファイル出力
         try:
@@ -208,7 +228,7 @@ else:
             os.makedirs(output_dir, exist_ok=True)
 
             base_name = os.path.splitext(os.path.basename(proposed_file))[0]
-            output_csv_path = os.path.join(output_dir, f"{base_name}.csv")
+            output_csv_path = os.path.join(output_dir, f"{base_name}_comparison.csv") # MOD: ファイル名変更
             
             df_results = pd.DataFrame(comparison_results)
 
@@ -219,7 +239,8 @@ else:
             column_order = [
                 'Run Name', 
                 'Waste Result', 'Waste Reduction', 'Proposed Waste', 'Previous Waste',
-                'Reagent Result', 'Reagent Reduction', 'Proposed Reagents', 'Previous Reagents'
+                'Reagent Result', 'Reagent Reduction', 'Proposed Reagents', 'Previous Reagents',
+                'Ops Reduction', 'Proposed Ops', 'Previous Ops' # MOD: Opsカラム追加
             ]
             existing_cols = [col for col in column_order if col in df_results.columns]
             df_results = df_results[existing_cols]

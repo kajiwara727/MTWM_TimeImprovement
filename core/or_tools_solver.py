@@ -235,7 +235,7 @@ class OrToolsSolver:
         # --- テクニック適用 (探索ログの有効化) ---
         self.solver.parameters.log_search_progress = True
 
-        self.solver.parameters.linearization_level = 2
+        self.solver.parameters.linearization_level = 1
             
         self.forest_vars = []             # Or-Tools の DFMM ノード変数を格納
         self.peer_vars = []               # Or-Tools の ピアR ノード変数を格納
