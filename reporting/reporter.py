@@ -166,6 +166,7 @@ class SolutionReporter:
             content.extend(
                 [
                     f"Total mixing operations: {results['total_operations']}",
+                    f"Max Total Reagent Input per Node: {settings['max_total_reagent_input_per_node']}",
                     f"Total waste generated: {results['total_waste']}",
                     f"Total reagent units used: {results['total_reagent_units']}",
                     "\n--- Reagent Usage Breakdown ---",

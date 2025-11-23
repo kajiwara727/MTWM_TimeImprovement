@@ -308,6 +308,7 @@ class OrToolsSolver:
         self._set_peer_mixing_constraints()
         self._set_symmetry_breaking_constraints()
         self.objective_variable = self._set_objective_function()
+        self._set_max_reagent_input_per_node_constraint()
 
     def _define_or_tools_variables(self):
         """
@@ -395,6 +396,7 @@ class OrToolsSolver:
             }
             self.peer_vars.append(node_vars)
 
+            
     # --- ヘルパーメソッド ---
 
     def _get_input_vars(self, node_vars):
@@ -646,7 +648,26 @@ class OrToolsSolver:
                         node_k1 = nodes_vars_list[k+1]
                         
                         self.model.Add(node_k["is_active_var"] >= node_k1["is_active_var"])
-                        
+
+    def _set_max_reagent_input_per_node_constraint(self):
+        """[制約11] DFMMノードごとの試薬投入量の上限を強制する制約 (Configより)"""
+        max_limit = Config.MAX_TOTAL_REAGENT_INPUT_PER_NODE
+
+        if max_limit is None or max_limit <= 0:
+            return
+
+        print(
+            f"--- Setting max total reagent input per node constraint to {max_limit} ---"
+        )
+
+        # 全てのDFMMノードをループ
+        for _, _, _, node_vars in self._iterate_all_nodes():
+            reagent_vars = node_vars.get("reagent_vars", [])
+            # 全ての試薬投入変数の合計が上限値以下であることを強制
+            # (reagent_varsの各変数は、既に f_value - 1 以下のドメインを持つため、
+            # この制約はそれに追加される)
+            if reagent_vars:
+                self.model.Add(sum(reagent_vars) <= max_limit)     
 
     def _set_objective_function(self):
         """[制約10] 目的関数"""

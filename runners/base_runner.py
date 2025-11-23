@@ -140,6 +140,7 @@ class BaseRunner(ABC):  # 抽象基底クラス(ABC)を継承
         # [MODIFIED] SolutionReporter に渡すための設定辞書を作成
         report_settings = {
             "max_sharing_volume": self.config.MAX_SHARING_VOLUME or "No limit",
+            "max_total_reagent_input_per_node": self.config.MAX_TOTAL_REAGENT_INPUT_PER_NODE or "No limit",
             "max_level_diff": self.config.MAX_LEVEL_DIFF or "No limit",
             "max_mixer_size": self.config.MAX_MIXER_SIZE,
         }

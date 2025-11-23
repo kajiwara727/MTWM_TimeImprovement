@@ -1,6 +1,6 @@
 # 実行名を定義します。出力ディレクトリの名前の一部として使用されます。
 # 例: "My_First_Run" -> "My_First_Run_xxxx" のようなディレクトリが生成される
-RUN_NAME = "試薬数削減確認"
+RUN_NAME = "Check"
 
 # 混合ツリーの階層構造（factors）を決定するモードを選択します。
 # 'manual': TARGETS_FOR_MANUAL_MODE で定義された factors を手動で設定します。
@@ -8,7 +8,7 @@ RUN_NAME = "試薬数削減確認"
 # 'auto_permutations': 'auto' で計算された factors の全順列を試し、最適な階層構造を探します。
 # 'random': RANDOM_... 設定に基づいてランダムなシナリオを複数回実行します。
 # 'file_load': CONFIG_LOAD_FILEで指定されたJSONファイルから設定を読み込みます。
-FACTOR_EXECUTION_MODE = "auto"
+FACTOR_EXECUTION_MODE = "file_load"
 # 最適化の目的を設定します。
 # "waste": 廃棄物量の最小化を目指します。（最も重要な目的）
 # "operations": 混合操作の総回数の最小化を目指します。（プロセス簡略化）
@@ -50,6 +50,13 @@ ABSOLUTE_GAP_LIMIT = 0.99
 # 例えば 1 に設定すると、共有は「1単位ずつ」に制限されます。
 # Noneの場合は無制限です。
 MAX_SHARING_VOLUME = None
+
+# 追加: (ノード当たりの純粋試薬投入量の合計上限)
+# DFMMノード一つに投入できる純粋試薬 (Reagent) の合計量の上限を設定します。
+# ノードの容量 (MAX_MIXER_SIZE) と比較して小さい値を設定すると、
+# 探索空間を制限し、実行時間の短縮に役立つ場合があります。
+# None または 0 に設定すると、制約は適用されません。
+MAX_TOTAL_REAGENT_INPUT_PER_NODE = 3
 
 # 中間液を共有する際の、供給元と供給先の階層レベル（level）の差の最大値を設定します。
 # 例えば 2 に設定すると、level 3 のノードは level 1 のノードにしか供給できません。
