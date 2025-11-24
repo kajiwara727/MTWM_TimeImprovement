@@ -650,27 +650,40 @@ class OrToolsSolver:
                         self.model.Add(node_k["is_active_var"] >= node_k1["is_active_var"])
 
     def _set_max_reagent_input_per_node_constraint(self):
-        """[制約11] DFMMノードごとの試薬投入量の上限を強制する制約 (Configより)"""
+        """[制約11] 変更: 試薬投入量上限をソフト制約（目標値）として設定"""
         max_limit = Config.MAX_TOTAL_REAGENT_INPUT_PER_NODE
 
         if max_limit is None or max_limit <= 0:
             return
 
         print(
-            f"--- Setting max total reagent input per node constraint to {max_limit} ---"
+            f"--- Setting max total reagent input per node (Soft Constraint) to {max_limit} ---"
         )
+
+        self.all_reagent_excess_vars = [] # 超過分変数を保存するリスト
 
         # 全てのDFMMノードをループ
         for _, _, _, node_vars in self._iterate_all_nodes():
             reagent_vars = node_vars.get("reagent_vars", [])
-            # 全ての試薬投入変数の合計が上限値以下であることを強制
-            # (reagent_varsの各変数は、既に f_value - 1 以下のドメインを持つため、
-            # この制約はそれに追加される)
+            
             if reagent_vars:
-                self.model.Add(sum(reagent_vars) <= max_limit)     
-
+                # このノードの試薬投入合計を表す変数
+                total_reagent_input = self.model.NewIntVar(0, 1000, "total_reagent_sum") # 1000は十分大きな値
+                self.model.Add(total_reagent_input == sum(reagent_vars))
+                
+                # 超過量を表す変数 (0以上)
+                # excess = max(0, total_reagent_input - max_limit) となるように設定
+                excess_var = self.model.NewIntVar(0, 1000, "reagent_excess")
+                
+                # 制約を追加して excess_var を定義
+                # 1. excess >= 合計 - 上限
+                #    (合計 <= 上限 のときは 右辺が負になるが、変数のドメインが0以上なので0になる)
+                self.model.Add(excess_var >= total_reagent_input - max_limit)
+                
+                self.all_reagent_excess_vars.append(excess_var)
     def _set_objective_function(self):
-        """[制約10] 目的関数"""
+        """[制約10] 目的関数 (変更あり: ペナルティ項の追加)"""
+        # --- 既存の変数収集ロジック (変更なし) ---
         all_waste_vars = []
         all_activity_vars = []
         all_reagent_vars = []
@@ -697,13 +710,29 @@ class OrToolsSolver:
         total_operations = sum(all_activity_vars)
         total_reagents = sum(all_reagent_vars)
 
+        # --- ここから追加: 超過量へのペナルティ計算 ---
+        
+        # ペナルティの重み: 非常に大きな値にする (廃棄物削減よりもルール遵守を優先させるため)
+        # これにより、どうしても守れない場合以外は、必ず制限を守る解が選ばれます。
+        penalty_weight = 100000 
+        total_penalty = 0
+        
+        # リストが存在する場合のみペナルティを計算
+        if hasattr(self, 'all_reagent_excess_vars') and self.all_reagent_excess_vars:
+            total_penalty = sum(self.all_reagent_excess_vars) * penalty_weight
+
+        # 最終的な目的関数にペナルティを加算して最小化
         if self.objective_mode == "waste":
-            self.model.Minimize(total_waste)
+            self.model.Minimize(total_waste + total_penalty)
             return total_waste
         elif self.objective_mode == "operations":
-            self.model.Minimize(total_operations)
+            self.model.Minimize(total_operations + total_penalty)
             return total_operations
         elif self.objective_mode == "reagents":
+            self.model.Minimize(total_reagents + total_penalty)
+            return total_reagents
+        else:
+            raise ValueError(f"Unknown optimization mode: '{self.objective_mode}'")
             self.model.Minimize(total_reagents)
             return total_reagents
         else:
