@@ -235,7 +235,7 @@ class OrToolsSolver:
         # --- テクニック適用 (探索ログの有効化) ---
         self.solver.parameters.log_search_progress = True
 
-        self.solver.parameters.linearization_level = 1
+        self.solver.parameters.linearization_level = 2
             
         self.forest_vars = []             # Or-Tools の DFMM ノード変数を格納
         self.peer_vars = []               # Or-Tools の ピアR ノード変数を格納
@@ -261,6 +261,7 @@ class OrToolsSolver:
         print(
             f"\n--- Solving the optimization problem (mode: {self.objective_mode.upper()}) with Or-Tools CP-SAT ---"
         )
+        
         
         status = self.solver.Solve(self.model)
         
@@ -307,6 +308,7 @@ class OrToolsSolver:
         self._set_activity_constraints()
         self._set_peer_mixing_constraints()
         self._set_symmetry_breaking_constraints()
+        self._set_input_degree_constraints()
         self.objective_variable = self._set_objective_function()
         self._set_max_reagent_input_per_node_constraint()
 
@@ -635,19 +637,63 @@ class OrToolsSolver:
                 rhs = r_a_vars[reagent_idx] + r_b_vars[reagent_idx]
                 # --- ★変更: Big-M を OnlyEnforceIf に変更 ---
                 self.model.Add(lhs == rhs).OnlyEnforceIf(is_active)
+    
+    def _set_input_degree_constraints(self):
+        """
+        [追加] 入力次数(Fan-in)の制限:
+        1つのノードに流入する共有液（Intra/Inter Sharing）の種類数に上限を設ける。
+        これにより、「少しずつ多種類を混ぜる」ような複雑な組み合わせを排除し、計算を高速化する。
+        """
+        # Configから設定値を取得 (デフォルトは制限なし)
+        max_fan_in = getattr(Config, "MAX_SHARED_INPUTS", None)
+
+        if max_fan_in is None:
+            return
+
+        print(f"--- Setting max shared input types (Fan-in) per node to {max_fan_in} ---")
+
+        # すべてのDFMMノードに対して制約を適用
+        for target_idx, level, node_idx, node_vars in self._iterate_all_nodes():
+            
+            # このノードへの「共有入力」変数をすべて収集 (試薬変数は含まない)
+            sharing_vars = []
+            sharing_vars.extend(node_vars.get("intra_sharing_vars", {}).values())
+            sharing_vars.extend(node_vars.get("inter_sharing_vars", {}).values())
+            
+            if not sharing_vars:
+                continue
+
+            # 各共有変数が「実際に使われているか (>0)」を表すブール変数を作成
+            is_used_bools = []
+            for var in sharing_vars:
+                # ブール変数: var > 0 なら True, var == 0 なら False
+                is_used = self.model.NewBoolVar(f"is_used_input_{var.Name()}")
+                
+                # var > 0  => is_used は True でなければならない
+                self.model.Add(var > 0).OnlyEnforceIf(is_used)
+                # var == 0 => is_used は False でなければならない
+                self.model.Add(var == 0).OnlyEnforceIf(is_used.Not())
+                
+                is_used_bools.append(is_used)
+            
+            # 使用される共有入力の数の合計が、上限(max_fan_in)以下になるよう制約
+            self.model.Add(sum(is_used_bools) <= max_fan_in)
 
     def _set_symmetry_breaking_constraints(self):
-        """対称性の破壊"""
         for m, tree_vars in enumerate(self.forest_vars):
             for l, nodes_vars_list in tree_vars.items():
                 if len(nodes_vars_list) > 1:
                     for k in range(len(nodes_vars_list) - 1):
-                        # k番目のノード
                         node_k = nodes_vars_list[k]
-                        # k+1番目のノード
                         node_k1 = nodes_vars_list[k+1]
-                        
+
+                        # 既存: アクティブ順序
                         self.model.Add(node_k["is_active_var"] >= node_k1["is_active_var"])
+
+                        # ★追加: 処理量の順序 (k は k+1 以上の量を処理する)
+                        # これにより「同じ量を処理するなら左寄せ」に解が限定され、
+                        # 証明すべき探索空間が半分以下になります。
+                        self.model.Add(node_k["total_input_var"] >= node_k1["total_input_var"])
 
     def _set_max_reagent_input_per_node_constraint(self):
         """[制約11] 変更: 試薬投入量上限をソフト制約（目標値）として設定"""
@@ -681,6 +727,7 @@ class OrToolsSolver:
                 self.model.Add(excess_var >= total_reagent_input - max_limit)
                 
                 self.all_reagent_excess_vars.append(excess_var)
+
     def _set_objective_function(self):
         """[制約10] 目的関数 (変更あり: ペナルティ項の追加)"""
         # --- 既存の変数収集ロジック (変更なし) ---
@@ -730,10 +777,6 @@ class OrToolsSolver:
             return total_operations
         elif self.objective_mode == "reagents":
             self.model.Minimize(total_reagents + total_penalty)
-            return total_reagents
-        else:
-            raise ValueError(f"Unknown optimization mode: '{self.objective_mode}'")
-            self.model.Minimize(total_reagents)
             return total_reagents
         else:
             raise ValueError(f"Unknown optimization mode: '{self.objective_mode}'")
