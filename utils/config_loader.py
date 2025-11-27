@@ -1,5 +1,6 @@
+# utils/config_loader.py
 import config
-import scenarios # [NEW]
+import scenarios
 
 class Config:
     """設定ファイルとシナリオデータを統合管理するクラス"""
@@ -13,10 +14,17 @@ class Config:
     MAX_TIME_PER_RUN_SECONDS = config.MAX_TIME_PER_RUN_SECONDS
     ABSOLUTE_GAP_LIMIT = config.ABSOLUTE_GAP_LIMIT
     
+    # --- 制約条件 ---
     MAX_SHARING_VOLUME = config.MAX_SHARING_VOLUME
     MAX_LEVEL_DIFF = config.MAX_LEVEL_DIFF
     MAX_MIXER_SIZE = config.MAX_MIXER_SIZE
     
+    MAX_SHARED_INPUTS = getattr(config, "MAX_SHARED_INPUTS", None)
+    MAX_TOTAL_REAGENT_INPUT_PER_NODE = getattr(config, "MAX_TOTAL_REAGENT_INPUT_PER_NODE", None)
+    PEER_NODE_LIMIT = getattr(config, "PEER_NODE_LIMIT", "half_p_group")
+    ENABLE_FINAL_PRODUCT_SHARING = getattr(config, "ENABLE_FINAL_PRODUCT_SHARING", False)
+    
+    # --- Random設定 ---
     RANDOM_T_REAGENTS = config.RANDOM_T_REAGENTS
     RANDOM_N_TARGETS = config.RANDOM_N_TARGETS
     RANDOM_K_RUNS = config.RANDOM_K_RUNS
