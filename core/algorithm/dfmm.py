@@ -1,4 +1,3 @@
-# core/dfmm.py
 import math
 import itertools
 from functools import reduce
@@ -235,3 +234,18 @@ def calculate_p_values_from_structure(forest_structure, targets_config):
         p_value_maps.append(p_value_map)
 
     return p_value_maps
+
+def apply_auto_factors(targets_config, max_mixer_size):
+    """
+    ターゲット設定のリストを受け取り、'auto'モード用に
+    各ターゲットの factors を計算して埋め込みます。
+    """
+    for target in targets_config:
+        ratio_sum = sum(target["ratios"])
+        factors = find_factors_for_sum(ratio_sum, max_mixer_size)
+        
+        if factors is None:
+            raise ValueError(f"Could not determine factors for {target['name']} (Sum={ratio_sum}).")
+            
+        target["factors"] = factors
+    return targets_config

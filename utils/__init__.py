@@ -7,7 +7,6 @@ from .helpers import (
     create_peer_key,
     parse_sharing_key,
     generate_config_hash,
-    generate_random_ratios
 )
 
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "create_peer_key",
     "parse_sharing_key",
     "generate_config_hash",
-    "generate_random_ratios",
 ]

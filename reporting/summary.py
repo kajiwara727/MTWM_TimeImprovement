@@ -1,8 +1,42 @@
+# reporting/summary.py
 import os
+import json # [NEW]
+
+def save_run_results_to_json(run_results, output_dir, filename="results.json"):
+    """実行結果のリストをJSONファイルとして保存"""
+    filepath = os.path.join(output_dir, filename)
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(run_results, f, indent=4)
+        print(f"Run results (JSON) saved to: {filepath}")
+    except IOError as e:
+        print(f"Error saving results JSON: {e}")
+
+def save_run_results_to_text(run_results, output_dir, filename="results.txt"):
+    """実行結果のリストを簡易テキストファイルとして保存"""
+    filepath = os.path.join(output_dir, filename)
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(f"--- Run Results List ({len(run_results)} runs) ---\n\n")
+            for run in run_results:
+                f.write(f"Run: {run['run_name']}\n")
+                f.write(f"  Result: {'Success' if run['final_value'] is not None else 'No Solution'}\n")
+                if run['final_value'] is not None:
+                    f.write(f"  Final Objective: {run['final_value']}\n")
+                    f.write(f"  Total Operations: {run.get('total_operations')}\n")
+                    f.write(f"  Total Reagents: {run.get('total_reagents')}\n")
+                    f.write(f"  Total Waste: {run.get('total_waste')}\n")
+                f.write(f"  Time: {run['elapsed_time']:.2f}s\n")
+                f.write("-" * 30 + "\n")
+        print(f"Run results (Text) saved to: {filepath}")
+    except IOError as e:
+        print(f"Error saving results text: {e}")
+
+
 
 def _save_summary_file(filepath, content, summary_type_name):
     """
-    [NEW] サマリーレポートのコンテンツ(文字列リスト)を受け取り、
+    サマリーレポートのコンテンツ(文字列リスト)を受け取り、
     指定されたファイルパスに書き込む共通ヘルパー関数。
     """
     try:
@@ -26,17 +60,7 @@ def _calculate_and_save_summary(
     """
     複数の実行結果(run_results)を受け取り、
     それらの平均値などを計算し、サマリーファイルとして保存する共通内部関数。
-    
-    'random' と 'file_load' (comparison) モードで使用されます。
-
-    Args:
-        run_results (list): 実行結果のリスト
-        output_dir (str): 保存先の親ディレクトリ
-        summary_filename (str): 保存するサマリーファイル名 (例: "MyRun_summary.txt")
-        title_prefix (str): レポートのタイトル (例: "Random")
-        objective_mode (str): 最適化モード
     """
-    # ファイル名を summary_filename 引数から直接決定する
     filepath = os.path.join(output_dir, summary_filename)
 
     content = [
@@ -86,14 +110,11 @@ def _calculate_and_save_summary(
             content.append("")
 
     # --- 2. 全実行の平均値を計算 ---
-    
-    # 解が見つかった実行のみをフィルタリング
     successful_runs = [res for res in run_results if res["final_value"] is not None]
     num_successful_runs = len(successful_runs)
     mode_label = objective_mode.title()
 
     if num_successful_runs > 0:
-        # 安全に合計値を計算するヘルパー関数
         def sum_metric_safe(metric_key):
             return sum(
                 run.get(metric_key, 0)
@@ -102,20 +123,16 @@ def _calculate_and_save_summary(
                 and isinstance(run.get(metric_key), (int, float))
             )
 
-        # 各指標の合計値を計算
         total_objective_value = sum_metric_safe("final_value")
         total_waste = sum_metric_safe("total_waste")
         total_operations = sum_metric_safe("total_operations")
         total_reagents = sum_metric_safe("total_reagents")
 
-        # 平均値を計算
         avg_objective_value = total_objective_value / num_successful_runs
         avg_waste = total_waste / num_successful_runs
         avg_operations = total_operations / num_successful_runs
         avg_reagents = total_reagents / num_successful_runs
-        # --- ★★★ ---
 
-        # 平均値のセクションをコンテンツに追加
         content.append("\n" + "=" * 50)
         content.append(
             f"        Average Results (based on {num_successful_runs} successful runs)        "
@@ -131,11 +148,10 @@ def _calculate_and_save_summary(
     else:
         content.append("\nNo successful runs found to calculate averages.")
 
-    # --- 3. [MODIFIED] 共通関数を呼び出してファイルへ保存 ---
     _save_summary_file(filepath, content, title_prefix)
 
 
-# --- 公開関数 (各Runnerから呼び出される) ---
+# --- 公開関数 ---
 
 def save_random_run_summary(run_results, output_dir):
     """'random' モード用のサマリーを保存する"""
@@ -143,9 +159,7 @@ def save_random_run_summary(run_results, output_dir):
     if run_results and "objective_mode" in run_results[0]:
         objective_mode = run_results[0]["objective_mode"]
 
-    # 親ディレクトリ名を取得 (例: "MyRun_random_a1b2c3d4")
     dir_name = os.path.basename(output_dir)
-    # ファイル名を生成 (例: "MyRun_random_a1b2c3d4_summary.txt")
     summary_filename = f"{dir_name}_summary.txt"
 
     _calculate_and_save_summary(
@@ -159,10 +173,7 @@ def save_random_run_summary(run_results, output_dir):
 
 def save_comparison_summary(run_results, output_dir, objective_mode):
     """'file_load' モード用のサマリーを保存する"""
-    
-    # 親ディレクトリ名を取得
     dir_name = os.path.basename(output_dir)
-    # ファイル名を生成
     summary_filename = f"{dir_name}_summary.txt"
 
     _calculate_and_save_summary(
@@ -175,26 +186,20 @@ def save_comparison_summary(run_results, output_dir, objective_mode):
 
 
 def save_permutation_summary(run_results, output_dir, objective_mode):
-    """'auto_permutations' モード用のサマリーを保存する
-       (平均値ではなく、ベスト/ワーストのパターンを報告する)
-    """
-    # 1. 成功した実行のみをフィルタリング
+    """'auto_permutations' モード用のサマリーを保存する"""
     successful_runs = [res for res in run_results if res["final_value"] is not None]
 
     if not successful_runs:
         print("\n[Permutation Summary] No successful runs found.")
         return
 
-    # 2. 目的値 (例: 廃棄物量) でソート (昇順)
     successful_runs.sort(key=lambda x: x["final_value"])
     min_objective_value = successful_runs[0]["final_value"]
 
-    # 3. ベストパターン (目的値が最小値と一致するもの全て) を抽出
     best_runs = [
         run for run in successful_runs if run["final_value"] == min_objective_value
     ]
 
-    # 4. セカンドベストパターン (最小値より大きいもののうち最小の値) を抽出
     second_min_objective_value = None
     for run in successful_runs:
         if run["final_value"] > min_objective_value:
@@ -209,11 +214,7 @@ def save_permutation_summary(run_results, output_dir, objective_mode):
             if run["final_value"] == second_min_objective_value
         ]
 
-    # 5. レポートコンテンツの構築
-    
-    # 親ディレクトリ名を取得
     dir_name = os.path.basename(output_dir)
-    # ファイル名を生成 (例: "MyPermutations_a1b2c3d4_summary.txt")
     filepath = os.path.join(output_dir, f"{dir_name}_summary.txt")
     
     objective_label = objective_mode.title()
@@ -245,7 +246,6 @@ def save_permutation_summary(run_results, output_dir, objective_mode):
         content.append(f"  Total Waste: {best_run.get('total_waste', 'N/A')}")
         content.append(f"  Elapsed Time: {best_run['elapsed_time']:.2f} sec")
         content.append("  Target Permutation Structure:")
-        # このパターンの 'factors' を表示
         for target_config in best_run["targets"]:
             ratios_str = ", ".join(map(str, target_config["ratios"]))
             factors_str = ", ".join(map(str, target_config["factors"]))
@@ -265,7 +265,6 @@ def save_permutation_summary(run_results, output_dir, objective_mode):
             content.append(
                 f"\n--- Rank 2 Pattern {i+1} (Run: {second_best_run['run_name']}) ---"
             )
-            # ... (ベストパターンと同様の詳細) ...
             content.append(
                 f"  Final Objective Value ({objective_label}): {second_best_run['final_value']}"
             )
@@ -289,5 +288,4 @@ def save_permutation_summary(run_results, output_dir, objective_mode):
     else:
         content.append("\nNo second best permutation found.")
 
-    # --- 6. [MODIFIED] 共通関数を呼び出してファイルへ保存 ---
     _save_summary_file(filepath, content, "Permutation Analysis")

@@ -1,4 +1,3 @@
-# reporting/visualizer.py
 import os
 import networkx as nx  # グラフ構造の作成・操作
 import matplotlib.pyplot as plt # グラフの描画
@@ -392,15 +391,16 @@ class SolutionVisualizer:
         )
         
         # --- 4. エッジラベル (流量の数値) の描画 ---
-        edge_labels = {k: v for k, v in edge_volumes.items() if k in drawable_edges}
-        nx.draw_networkx_edge_labels(
-            G,
-            pos,
-            edge_labels=edge_labels,
-            font_size=self.STYLE_CONFIG["font"]["font_size"],
-            font_color=self.STYLE_CONFIG["font"]["font_color"],
-            bbox=self.STYLE_CONFIG["edge_label_bbox"],
-        )
+        # [MODIFIED] エッジのラベル（数字）を表示しないようにコメントアウト
+        # edge_labels = {k: v for k, v in edge_volumes.items() if k in drawable_edges}
+        # nx.draw_networkx_edge_labels(
+        #     G,
+        #     pos,
+        #     edge_labels=edge_labels,
+        #     font_size=self.STYLE_CONFIG["font"]["font_size"],
+        #     font_color=self.STYLE_CONFIG["font"]["font_color"],
+        #     bbox=self.STYLE_CONFIG["edge_label_bbox"],
+        # )
         
         # --- 5. カラーバー (凡例) の描画 ---
         if edge_volumes and volumes:

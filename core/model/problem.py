@@ -1,3 +1,4 @@
+# core/model/problem.py
 import itertools
 import math
 from collections import defaultdict
@@ -9,16 +10,30 @@ from utils.helpers import (
     create_peer_key,
 )
 
+
 class MTWMProblem:
+    """
+    最適化問題の構造を定義するクラス。
+    DFMMで計算されたツリー構造に基づき、ノード変数、共有可能性、
+    ピア(R)ノードの定義などを行います。
+    """
 
     def __init__(self, targets_config, tree_structures, p_value_maps):
         self.targets_config = targets_config
         self.num_reagents = len(targets_config[0]["ratios"]) if targets_config else 0
         self.tree_structures = tree_structures
         self.p_value_maps = p_value_maps
+        
+        # 1. 基本的なDFMMノードの骨格を定義
         self.forest = self._define_base_variables()
+        
+        # 2. ピア(R)ノード（1:1混合）の候補を定義
         self.peer_nodes = self._define_peer_mixing_nodes()
+        
+        # 3. 共有可能な接続（Potential Sources）を事前計算
         self.potential_sources_map = self._precompute_potential_sources_v2()
+        
+        # 4. 各ノードに共有変数のプレースホルダーを追加
         self._define_sharing_variables()
 
     def _define_base_variables(self):
@@ -41,135 +56,121 @@ class MTWMProblem:
                 )
                 level_nodes = []
                 for node_idx in nodes_at_level:
-                    # ★ プレースホルダーを削除し、空の辞書のみを追加
-                    # この辞書には後に _define_sharing_variables で
-                    # "intra_sharing_vars" と "inter_sharing_vars" が追加されます。
+                    # 空の辞書を追加。後に共有変数が格納されます。
                     level_nodes.append({})
 
                 tree_data[level] = level_nodes
             forest_data.append(tree_data)
         return forest_data
 
+    # --- [Refactored] ピア(R)ノード生成関連メソッド ---
+
     def _define_peer_mixing_nodes(self):
         """
-        [変更]
         P値が一致する中間ノードのペア(1:1混合)を定義します。
-        config.PEER_NODE_LIMIT の設定に基づき、生成ロジックを変更します。
-        
-        - "half_p_group": P値グループごとにノード数の半分のペアを生成。
-        - "half_targets", 整数, "unlimited": 全ノードの組み合わせから全体の上限まで生成。
+        リファクタリングにより、設定解釈・収集・生成のフェーズに分割しました。
         """
-        print("Defining potential peer-mixing nodes (1:1 mix combinations)...")
-        peer_nodes = [] # 結果のリスト
-
-        # --- 1. config からモードと上限値 (limit) を決定 ---
-        limit_config = "half_targets" # config.py にない場合のデフォルト
-        if hasattr(Config, "PEER_NODE_LIMIT"):
-            limit_config = Config.PEER_NODE_LIMIT
-
-        num_targets = len(self.targets_config)
-        global_limit = float('inf') # 全体の上限
-
-        if limit_config == "half_p_group":
-            print("  -> Mode: 'half_p_group'. Limiting peers per P-value group.")
-            # このモードの場合、global_limit は使わず、グループごとに計算する
-        else:
-            if isinstance(limit_config, int):
-                global_limit = limit_config
-            elif limit_config == "half_targets":
-                global_limit = math.floor(num_targets / 2) if num_targets > 0 else 0
-            # "unlimited" または None の場合は float('inf') のまま
-
-            print(f"  -> Mode: Global Limit. Config='{limit_config}' (Resolved Global Limit: {global_limit})")
-            if global_limit == 0:
-                print("  -> Global peer node limit is 0. Skipping peer node generation.")
-                return []
-
-        # --- 2. 全てのDFMMノード（L>0、非リーフ）を収集 ---
-        all_dfmm_nodes_info = {} # { node_id: (p_val, f_val), ... }
+        print("Defining potential peer-mixing nodes...")
+        peer_nodes = []
         
-        for target_idx, tree in enumerate(self.forest):
-            for level, nodes in tree.items():
-                if level == 0:
-                    continue
-                for node_idx, node in enumerate(nodes):
-                    node_id = (target_idx, level, node_idx)
-                    p_val = self.p_value_maps[target_idx].get((level, node_idx))
-                    if p_val is None:
-                        continue
-                        
-                    f_val = self.targets_config[target_idx]["factors"][level]
-                    # リーフノード (P==F) は除外
-                    if p_val == f_val:
-                        continue
-                        
-                    all_dfmm_nodes_info[node_id] = (p_val, f_val)
+        # 1. 設定の解釈 (モードと上限値の決定)
+        mode, global_limit = self._resolve_peer_limit_config()
 
-        # --- 3. PEER_NODE_LIMIT のモードに応じてロジックを分岐 ---
-
-        if limit_config == "half_p_group":
-            # --- ロジック A: "half_p_group" (ご要望の動作) ---
-            
-            # P値でノードをグループ化
-            p_groups = defaultdict(list)
-            for node_id, (p_val, f_val) in all_dfmm_nodes_info.items():
-                p_groups[p_val].append(node_id)
-
-            for p_val, nodes_list in p_groups.items():
+        # 2. 候補ノード情報の収集 (P値ごとにグループ化)
+        nodes_by_p_value = self._collect_dfmm_nodes_by_p_value()
+        
+        # 3. ピアの生成
+        if mode == "half_p_group":
+            # モードA: P値グループごとに上限を設けて生成
+            for p_val, nodes_list in nodes_by_p_value.items():
                 if len(nodes_list) < 2:
                     continue
                 
-                # このグループの上限 = floor(ノード数 / 2)
-                nodes_count = len(nodes_list)
-                if nodes_count == 3:
-                    # 3 の場合: ceil(3 / 2) = ceil(1.5) = 2
-                    group_limit = math.ceil(nodes_count / 2)
-                else:
-                    # 2 の場合: floor(2 / 2) = 1
-                    # 4 の場合: floor(4 / 2) = 2
-                    # 5 の場合: floor(5 / 2) = 2
-                    group_limit = math.floor(nodes_count / 2)
-                
-                print(f"  -> P-value group {p_val} (size {nodes_count}): Creating max {group_limit} peer(s).")
-                
-                nodes_generated_for_group = 0
-                
-                # このグループ内で 1:1 の組み合わせを作成
-                for node_a_id, node_b_id in itertools.combinations(nodes_list, 2):
-                    if nodes_generated_for_group >= group_limit:
-                        break # このグループの上限に達した
-                        
-                    peer_nodes.append(
-                        self._create_peer_node_entry(node_a_id, node_b_id, p_val)
-                    )
-                    nodes_generated_for_group += 1
+                # グループごとの上限 = floor(ノード数 / 2)
+                # (例: 3ノードなら ceil(1.5)=2 にする等、微調整が可能)
+                group_limit = math.floor(len(nodes_list) / 2)
+                if len(nodes_list) == 3:
+                    group_limit = 2 
 
+                print(f"  -> P-value group {p_val} (size {len(nodes_list)}): Creating max {group_limit} peer(s).")
+                self._generate_peers_from_list(nodes_list, p_val, group_limit, peer_nodes)
         else:
-            # --- ロジック B: "half_targets", 整数, "unlimited" (全体上限) ---
-            
-            all_nodes_list = list(all_dfmm_nodes_info.keys())
-            
-            # 全ノードの 1:1 の組み合わせをイテレート
-            for node_a_id, node_b_id in itertools.combinations(all_nodes_list, 2):
-                if len(peer_nodes) >= global_limit:
-                    break # 全体の上限に達した
-
-                p_val_a = all_dfmm_nodes_info[node_a_id][0]
-                p_val_b = all_dfmm_nodes_info[node_b_id][0]
-
-                # P値が一致するかチェック
-                if p_val_a is None or p_val_a != p_val_b:
-                    continue
-                    
-                peer_nodes.append(
-                    self._create_peer_node_entry(node_a_id, node_b_id, p_val_a)
-                )
+            # モードB: 全体リストから上限まで生成
+            all_nodes_flat = [n for sublist in nodes_by_p_value.values() for n in sublist]
+            self._generate_peers_from_list(all_nodes_flat, None, global_limit, peer_nodes)
 
         if len(peer_nodes) >= global_limit and global_limit != float('inf'):
             print(f"  -> Reached global peer node limit ({global_limit}). Stopped combination search early.")
 
         print(f"  -> Found {len(peer_nodes)} potential peer-mixing combinations.")
         return peer_nodes
+
+    def _resolve_peer_limit_config(self):
+        """Configから制限モードと全体上限値を解決します"""
+        limit_config = getattr(Config, "PEER_NODE_LIMIT", "half_targets")
+        
+        if limit_config == "half_p_group":
+            print("  -> Mode: 'half_p_group'. Limiting peers per P-value group.")
+            return "half_p_group", float('inf')
+            
+        num_targets = len(self.targets_config)
+        global_limit = float('inf')
+        
+        if isinstance(limit_config, int):
+            global_limit = limit_config
+        elif limit_config == "half_targets":
+            global_limit = math.floor(num_targets / 2) if num_targets > 0 else 0
+            
+        print(f"  -> Mode: Global Limit. Config='{limit_config}' (Resolved Global Limit: {global_limit})")
+        return "global", global_limit
+
+    def _collect_dfmm_nodes_by_p_value(self):
+        """DFMMノードをP値ごとにグループ化して返します"""
+        p_groups = defaultdict(list)
+        for target_idx, tree in enumerate(self.forest):
+            for level, nodes in tree.items():
+                if level == 0: continue # ルートノードは除外
+                for node_idx, _ in enumerate(nodes):
+                    p_val = self.p_value_maps[target_idx].get((level, node_idx))
+                    f_val = self.targets_config[target_idx]["factors"][level]
+                    
+                    # リーフノード (P == F) は除外
+                    if p_val is not None and p_val != f_val: 
+                        node_id = (target_idx, level, node_idx)
+                        p_groups[p_val].append(node_id)
+        return p_groups
+
+    def _generate_peers_from_list(self, nodes_list, p_val_force, limit, out_peer_nodes):
+        """
+        ノードリストから2つの組み合わせを作成し、条件を満たすものを out_peer_nodes に追加します。
+        
+        Args:
+            nodes_list (list): 組み合わせ候補のノードIDリスト
+            p_val_force (int or None): 強制するP値。Noneの場合はマップから参照して一致確認を行う。
+            limit (int): 生成上限数
+            out_peer_nodes (list): 結果格納用リスト
+        """
+        count = 0
+        # itertools.combinations で重複なしのペアを生成
+        for node_a, node_b in itertools.combinations(nodes_list, 2):
+            if count >= limit:
+                break
+            
+            p_val = p_val_force
+            
+            # P値が未指定(globalモード)の場合、ここで一致確認を行う
+            if p_val is None:
+                m_a, l_a, k_a = node_a
+                m_b, l_b, k_b = node_b
+                p_a = self.p_value_maps[m_a].get((l_a, k_a))
+                p_b = self.p_value_maps[m_b].get((l_b, k_b))
+                
+                if p_a is None or p_a != p_b:
+                    continue # P値が一致しないペアはスキップ
+                p_val = p_a
+
+            out_peer_nodes.append(self._create_peer_node_entry(node_a, node_b, p_val))
+            count += 1
 
     def _create_peer_node_entry(self, node_a_id, node_b_id, p_val):
         """ヘルパー: ピア(R)ノードの辞書エントリを作成する"""
@@ -189,6 +190,8 @@ class MTWMProblem:
             "source_b_id": node_b_id,
             "p_value": p_val,
         }
+
+    # --- 共有（Sharing）関連メソッド ---
 
     def _precompute_potential_sources_v2(self):
         source_map = {}
@@ -230,15 +233,14 @@ class MTWMProblem:
                 is_intermediate_node_connection = (l_src_eff > dst_level)
                 
                 # 2. 供給元が最終ノード (level == 0) の場合
-                #    Config フラグが True の場合のみ許可
                 is_final_node_connection = (
                     (l_src_eff == 0) and Config.ENABLE_FINAL_PRODUCT_SHARING
                 )
                 
-                # どちらかがTrueであれば有効
                 is_valid_level_connection = (
                     is_intermediate_node_connection or is_final_node_connection
                 )
+            
             if not is_valid_level_connection:
                 continue
             if Config.MAX_LEVEL_DIFF is not None and l_src_eff > dst_level + Config.MAX_LEVEL_DIFF:
@@ -255,7 +257,6 @@ class MTWMProblem:
     def _create_sharing_vars_for_node(self, dst_target_idx, dst_level, dst_node_idx):
         """
         共有液量を表す変数の「キー」の辞書を作成します。
-        値は OrToolsSolver が設定するため、ここではプレースホルダー (None) すら不要です。
         """
         potential_sources = self.potential_sources_map.get(
             (dst_target_idx, dst_level, dst_node_idx), []
@@ -282,6 +283,7 @@ class MTWMProblem:
         return intra_vars, inter_vars
 
     def _define_sharing_variables(self):
+        """各ノードの辞書に共有変数のプレースホルダーを追加します"""
         for dst_target_idx, tree_dst in enumerate(self.forest):
             for dst_level, nodes_dst in tree_dst.items():
                 for dst_node_idx, node in enumerate(nodes_dst):
