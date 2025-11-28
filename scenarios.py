@@ -2,9 +2,13 @@
 # 'auto'系モードでは、'factors' (混合階層) を指定する必要はありません。
 # 'ratios' (混合比率) のみ定義します。
 TARGETS_FOR_AUTO_MODE = [
-    # 試薬数削減確認
-    # {'name': 'Target 1', 'ratios': [3,10,1,4]},
-    # {'name': 'Target 2', 'ratios': [6,3,5,4]},
+    # Def[135]-2-3-1回目
+    {'name': 'Target 1', 'ratios': [41, 71, 23]},
+    {'name': 'Target 2', 'ratios': [54, 52, 29]},
+
+    # Def[135]-2-3-2回目
+    # {'name': 'Target 1', 'ratios': [121,2,12]},
+    # {'name': 'Target 2', 'ratios': [9,32,94]},
 
     # Simple
     # {'name': 'Target 1', 'ratios': [2,11,5]},
@@ -37,9 +41,9 @@ TARGETS_FOR_AUTO_MODE = [
     # {'name': 'Target 3', 'ratios': [69,40,38]},
 
     # 49:98:147_Third
-    {'name': 'Target 1', 'ratios': [19,17,13]},
-    {'name': 'Target 2', 'ratios': [40,33,25]},
-    {'name': 'Target 3', 'ratios': [59,50,38]},
+    # {'name': 'Target 1', 'ratios': [19,17,13]},
+    # {'name': 'Target 2', 'ratios': [40,33,25]},
+    # {'name': 'Target 3', 'ratios': [59,50,38]},
 
     # TimeTest
     # {'name': 'Target 1', 'ratios': [2, 12,3,1]},

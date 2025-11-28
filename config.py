@@ -2,13 +2,13 @@
 RUN_NAME = "test"
 
 # 実行モード: 'manual', 'auto', 'auto_permutations', 'random', 'file_load'
-FACTOR_EXECUTION_MODE = "random"
+FACTOR_EXECUTION_MODE = "auto"
 
 # 最適化の目的: "waste", "operations", "reagents"
 OPTIMIZATION_MODE = "waste"
 
 # --- 出力設定 ---
-ENABLE_VISUALIZATION = True # True or False
+ENABLE_VISUALIZATION = False # True or False
 CONFIG_LOAD_FILE = "random_configs.json"
 
 # --- 制約条件 (ソルバーの挙動制御) ---
