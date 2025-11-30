@@ -80,26 +80,46 @@ class StructureVisualizer:
                         G.add_node(r_name, label=f"R{r_idx+1}", level=level+0.8, target=t_idx, type="reagent")
                         G.add_edge(r_name, node_name, type="reagent")
 
-        # 3. ノードの追加 (Peer Nodes)
+        # 3. ノードの追加 (Peer Nodes) [Modified]
         if mode == "full":
             for i, peer in enumerate(self.problem.peer_nodes):
                 p_name = peer["name"]
-                src_a = peer["source_a_id"]
-                src_b = peer["source_b_id"]
-                avg_level = (src_a[1] + src_b[1]) / 2.0 - 0.5
                 
-                G.add_node(p_name, label=f"Peer\n(P={peer['p_value']})", level=avg_level, target=src_a[0], type="mix_peer")
-                
-                src_a_name = create_dfmm_node_name(*src_a)
-                src_b_name = create_dfmm_node_name(*src_b)
-                # 固定入力エッジ
-                G.add_edge(src_a_name, p_name, type="default") 
-                G.add_edge(src_b_name, p_name, type="default")
-                
-                # === [修正] ピアノードへの試薬投入候補の描画を削除 ===
-                # ソルバーはピアノードへの試薬投入をサポートしていないため描画しない
+                # --- [分岐] Dynamic vs Fixed ---
+                if peer.get("is_generic", False):
+                    # Dynamic Peer
+                    candidates = peer["candidate_sources"]
+                    
+                    # 可視化位置（レベル）の計算: 候補の平均位置の少し上
+                    if candidates:
+                        avg_level = sum(c[1] for c in candidates) / len(candidates) - 0.5
+                        target_idx = candidates[0][0] # 便宜上、最初の候補のターゲットIDを使用
+                    else:
+                        avg_level = 0.5
+                        target_idx = 0
+                    
+                    G.add_node(p_name, label=f"Peer\n(P={peer['p_value']})", level=avg_level, target=target_idx, type="mix_peer")
+                    
+                    # 候補ノードからのエッジを追加 (タイプは potential)
+                    for src in candidates:
+                        src_name = create_dfmm_node_name(*src)
+                        G.add_edge(src_name, p_name, type="potential")
+                        
+                else:
+                    # Fixed Peer (Legacy)
+                    src_a = peer["source_a_id"]
+                    src_b = peer["source_b_id"]
+                    avg_level = (src_a[1] + src_b[1]) / 2.0 - 0.5
+                    
+                    G.add_node(p_name, label=f"Peer\n(P={peer['p_value']})", level=avg_level, target=src_a[0], type="mix_peer")
+                    
+                    src_a_name = create_dfmm_node_name(*src_a)
+                    src_b_name = create_dfmm_node_name(*src_b)
+                    # 固定入力エッジ (タイプは default)
+                    G.add_edge(src_a_name, p_name, type="default") 
+                    G.add_edge(src_b_name, p_name, type="default")
 
-        # 4. エッジの追加
+        # 4. エッジの追加 (DFMMへの入力)
         for dst_key, sources in self.problem.potential_sources_map.items():
             dst_name = create_dfmm_node_name(*dst_key)
             

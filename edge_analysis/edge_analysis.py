@@ -47,6 +47,10 @@ def count_edges_for_analysis():
             log(f"  Target: {t['name']}")
             log(f"    - Ratios:  {t['ratios']}")
             log(f"    - Factors: {t['factors']}")
+        
+        # 接続モードの表示 (Configに属性がない場合を考慮してgetattr)
+        peer_mode = getattr(Config, "PEER_CONNECTION_MODE", "fixed")
+        log(f"  Peer Connection Mode: {peer_mode}")
         log("-" * 60)
 
         # 2. 問題構造の構築
@@ -88,29 +92,40 @@ def count_edges_for_analysis():
                     else:
                         counts["Intra-Sharing (Skip Level)"] += 1
 
-        # (2) Peerノードへの入力
-        num_peers = len(problem.peer_nodes)
-        counts["Node->Peer (Fixed Inputs)"] = num_peers * 2
+        # (2) Peerノードへの入力 [Modified]
+        # is_generic フラグによってカウント方法を変える
+        for peer in problem.peer_nodes:
+            if peer.get("is_generic", False):
+                # Dynamic: 候補の数だけエッジがある
+                counts["Node->Peer (Candidates)"] += len(peer["candidate_sources"])
+            else:
+                # Fixed: 必ず2本
+                counts["Node->Peer (Fixed Inputs)"] += 2
 
         total_mixing_edges = sum(counts.values())
 
         # --- 3. 分析サマリー出力 ---
         log("\n" + "="*30 + " EDGE COUNT SUMMARY " + "="*30)
         log(f"Total Nodes (DFMM): {total_dfmm_nodes}")
-        log(f"Total Peer Nodes:   {num_peers}")
+        log(f"Total Peer Nodes:   {len(problem.peer_nodes)}")
         log("-" * 80)
         
         log(f"[1] Reagent Edges (Variables): {total_reagent_edges}")
         log(f"[2] Mixing Node Edges (Total): {total_mixing_edges}")
         log(f"    --- Breakdown ---")
-        for key in [
+        
+        display_keys = [
             "Default DFMM (Child->Parent)", 
             "Intra-Sharing (Skip Level)", 
             "Inter-Sharing (Cross Tree)", 
             "Peer-Sharing (Peer->Node)", 
-            "Node->Peer (Fixed Inputs)"
-        ]:
-            log(f"    {key:<35}: {counts[key]:>5}")
+            "Node->Peer (Fixed Inputs)",
+            "Node->Peer (Candidates)" # 追加
+        ]
+        
+        for key in display_keys:
+            if counts[key] > 0 or key == "Node->Peer (Fixed Inputs)": # 0でも一応表示しておくと分かりやすい場合も
+                log(f"    {key:<35}: {counts[key]:>5}")
         
         log("=" * 80)
 
@@ -118,28 +133,33 @@ def count_edges_for_analysis():
         log("\n" + "="*30 + " [3] CONNECTION DETAILS " + "="*30)
         log("(Format: Destination <--- Source [Type])")
         
-        # A. Peerノードへの入力 (Fixed)
+        # A. Peerノードへの入力 [Modified]
         if problem.peer_nodes:
-            log("\n--- A. Node -> Peer (Fixed Inputs) ---")
+            log("\n--- A. Node -> Peer (Fixed Inputs / Candidates) ---")
             for peer in problem.peer_nodes:
                 p_name = peer["name"]
-                src_a = create_dfmm_node_name(*peer["source_a_id"])
-                src_b = create_dfmm_node_name(*peer["source_b_id"])
-                log(f"{p_name:<30} <--- {src_a} [Fixed A]")
-                log(f"{p_name:<30} <--- {src_b} [Fixed B]")
+                
+                if peer.get("is_generic", False):
+                    # Dynamic Peer
+                    for src in peer["candidate_sources"]:
+                        src_name = create_dfmm_node_name(*src)
+                        log(f"{p_name:<30} <--- {src_name} [Candidate]")
+                else:
+                    # Fixed Peer (Legacy)
+                    src_a = create_dfmm_node_name(*peer["source_a_id"])
+                    src_b = create_dfmm_node_name(*peer["source_b_id"])
+                    log(f"{p_name:<30} <--- {src_a} [Fixed A]")
+                    log(f"{p_name:<30} <--- {src_b} [Fixed B]")
         
         # B. DFMMノードへの入力 (Potential)
-        # 見やすくするためにターゲットごとにグループ化して出力
         log("\n--- B. Inputs to DFMM Nodes (Default & Potential) ---")
         
-        # 供給先(Destination)をソート: (target, level, index)
         sorted_destinations = sorted(problem.potential_sources_map.keys())
-        
         current_target = -1
+        
         for dst_key in sorted_destinations:
             dst_target, dst_level, dst_node = dst_key
             
-            # ターゲットが変わったらヘッダーを表示
             if dst_target != current_target:
                 t_name = targets_config[dst_target]['name']
                 log(f"\n[Target {dst_target+1}: {t_name}]")
@@ -151,7 +171,6 @@ def count_edges_for_analysis():
             for src in sources:
                 src_target, src_level, src_node = src
                 
-                # ソース名の解決とタイプの判定
                 if src_target == "R":
                     src_name = problem.peer_nodes[src_level]["name"]
                     edge_type = "Peer-Sharing"
@@ -164,7 +183,6 @@ def count_edges_for_analysis():
                     else:
                         edge_type = "Intra-Sharing"
                 
-                # 出力
                 log(f"  {dst_name:<30} <--- {src_name:<30} [{edge_type}]")
 
     print(f"\nAnalysis results saved to: {output_filepath}")
