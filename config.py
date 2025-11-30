@@ -1,3 +1,5 @@
+# config.py
+
 # 実行名を定義します。出力ディレクトリの名前の一部として使用されます。
 RUN_NAME = "test"
 
@@ -12,7 +14,7 @@ ENABLE_VISUALIZATION = False # True or False
 CONFIG_LOAD_FILE = "random_configs.json"
 
 # --- 制約条件 (ソルバーの挙動制御) ---
-MAX_CPU_WORKERS = None
+MAX_CPU_WORKERS = 16
 MAX_TIME_PER_RUN_SECONDS = None
 ABSOLUTE_GAP_LIMIT = 0.99
 MAX_SHARING_VOLUME = None
@@ -20,7 +22,14 @@ MAX_SHARED_INPUTS = None
 MAX_TOTAL_REAGENT_INPUT_PER_NODE = None
 MAX_LEVEL_DIFF = None
 MAX_MIXER_SIZE = 5
+
 PEER_NODE_LIMIT = "half_p_group"
+
+# ペア混合ノードの接続モード
+# "fixed"   : 従来の方式 (Python側で事前にペアを固定する)
+# "dynamic" : 新方式 (ソルバーが候補の中から最適な2つを選択する)
+PEER_CONNECTION_MODE = "dynamic" 
+
 ENABLE_FINAL_PRODUCT_SHARING = False
 
 # --- 'random' モード用パラメータ ---

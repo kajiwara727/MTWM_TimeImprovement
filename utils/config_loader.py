@@ -22,6 +22,10 @@ class Config:
     MAX_SHARED_INPUTS = getattr(config, "MAX_SHARED_INPUTS", None)
     MAX_TOTAL_REAGENT_INPUT_PER_NODE = getattr(config, "MAX_TOTAL_REAGENT_INPUT_PER_NODE", None)
     PEER_NODE_LIMIT = getattr(config, "PEER_NODE_LIMIT", "half_p_group")
+    
+    # [NEW] 設定の読み込み (デフォルトは "fixed")
+    PEER_CONNECTION_MODE = getattr(config, "PEER_CONNECTION_MODE", "fixed")
+    
     ENABLE_FINAL_PRODUCT_SHARING = getattr(config, "ENABLE_FINAL_PRODUCT_SHARING", False)
     
     # --- Random設定 ---

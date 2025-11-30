@@ -1,5 +1,6 @@
 import time
 import sys
+from collections import defaultdict
 from ortools.sat.python import cp_model
 from utils.config_loader import Config
 from utils import (
@@ -9,7 +10,6 @@ from utils import (
     create_peer_key,
     parse_sharing_key,
 )
-# [NEW] 分割したSolutionクラスをインポート
 from .solution import OrToolsSolutionModel
 
 sys.setrecursionlimit(2000)
@@ -57,7 +57,6 @@ class OrToolsSolver:
             best_value = self.solver.ObjectiveValue()
             print(f"Or-Tools found solution with {self.objective_mode}: {int(best_value)}")
             
-            # [MODIFIED] 分離した OrToolsSolutionModel を使用
             best_model = OrToolsSolutionModel(
                 self.problem, self.solver, self.forest_vars, self.peer_vars
             )
@@ -88,12 +87,10 @@ class OrToolsSolver:
 
     def _define_or_tools_variables(self):
         """
-        `core/problem.py` (Z3変数) の構造に基づき、
-        Or-Tools (CP-SAT) の変数を定義し、`self.forest_vars` と
-        `self.peer_vars` に格納します。
+        変数を定義し、self.forest_vars と self.peer_vars に格納します。
         """
             
-        # 1. DFMMノード変数の定義
+        # 1. DFMMノード変数の定義 (変更なし)
         for target_idx, z3_tree in enumerate(self.problem.forest):
             tree_data = {}
             for level, z3_nodes in z3_tree.items():
@@ -106,13 +103,13 @@ class OrToolsSolver:
                     reagent_max = max(0, f_value - 1)
                     
                     node_vars = {
-                        "ratio_vars": [ # 比率 (r_i)
+                        "ratio_vars": [
                             self.model.NewIntVar(
                                 0, p_node, f"ratio_{node_name}_r{t}"
                             )
                             for t in range(self.problem.num_reagents)
                         ],
-                        "reagent_vars": [ # 試薬投入量 (w_r_i)
+                        "reagent_vars": [
                             self.model.NewIntVar(
                                 0, reagent_max, f"reagent_vol_{node_name}_r{t}"
                             )
@@ -149,27 +146,44 @@ class OrToolsSolver:
                 tree_data[level] = level_nodes
             self.forest_vars.append(tree_data)
             
-        # 2. ピア(R)ノード変数の定義
+        # 2. ピア(R)ノード変数の定義 [Modified]
         for i, z3_peer_node in enumerate(self.problem.peer_nodes):
             name = z3_peer_node["name"]
             p_val = z3_peer_node["p_value"]
+            is_generic = z3_peer_node.get("is_generic", False)
+
             node_vars = {
                 "name": name,
                 "p_value": p_val,
-                "source_a_id": z3_peer_node["source_a_id"],
-                "source_b_id": z3_peer_node["source_b_id"],
+                "is_generic": is_generic, # フラグ保持
                 "ratio_vars": [
                     self.model.NewIntVar(0, p_val, f"ratio_{name}_r{t}")
                     for t in range(self.problem.num_reagents)
                 ],
-                "input_vars": {
-                    "from_a": self.model.NewIntVar(0, 1, f"share_peer_a_to_{name}"),
-                    "from_b": self.model.NewIntVar(0, 1, f"share_peer_b_to_{name}"),
-                },
                 "total_input_var": self.model.NewIntVar(0, 2, f"TotalInput_{name}"),
                 "is_active_var": self.model.NewBoolVar(f"IsActive_{name}"),
                 "waste_var": self.model.NewIntVar(0, 2, f"waste_{name}"),
             }
+
+            if is_generic:
+                # --- [新ロジック] 動的選択用の変数 ---
+                candidates = z3_peer_node["candidate_sources"]
+                input_selection_vars = {}
+                for src_id in candidates:
+                    var_name = f"select_{name}_from_t{src_id[0]}l{src_id[1]}k{src_id[2]}"
+                    input_selection_vars[src_id] = self.model.NewBoolVar(var_name)
+                
+                node_vars["input_vars"] = input_selection_vars
+                node_vars["candidate_sources"] = candidates
+            else:
+                # --- [旧ロジック] 固定ペア用の変数 ---
+                node_vars["source_a_id"] = z3_peer_node["source_a_id"]
+                node_vars["source_b_id"] = z3_peer_node["source_b_id"]
+                node_vars["input_vars"] = {
+                    "from_a": self.model.NewIntVar(0, 1, f"share_peer_a_to_{name}"),
+                    "from_b": self.model.NewIntVar(0, 1, f"share_peer_b_to_{name}"),
+                }
+
             self.peer_vars.append(node_vars)
 
             
@@ -187,6 +201,7 @@ class OrToolsSolver:
         key_intra = f"from_{create_intra_key(src_level, src_node_idx)}"
         key_inter = f"from_{create_inter_key(src_target_idx, src_level, src_node_idx)}"
         
+        # 1. DFMMノードへの供給チェック (変更なし)
         for dst_target_idx, tree_dst in enumerate(self.forest_vars):
             for dst_level, level_dst in tree_dst.items():
                 for dst_node_idx, node_dst in enumerate(level_dst):
@@ -199,11 +214,23 @@ class OrToolsSolver:
                     ):
                         outgoing.append(node_dst["inter_sharing_vars"][key_inter])
         
+        # 2. ピア(R)ノードへの供給チェック [Modified]
+        src_id = (src_target_idx, src_level, src_node_idx)
+        
         for or_peer_node in self.peer_vars:
-            if (src_target_idx, src_level, src_node_idx) == or_peer_node["source_a_id"]:
-                outgoing.append(or_peer_node["input_vars"]["from_a"])
-            if (src_target_idx, src_level, src_node_idx) == or_peer_node["source_b_id"]:
-                outgoing.append(or_peer_node["input_vars"]["from_b"])
+            input_vars = or_peer_node["input_vars"]
+            
+            if or_peer_node.get("is_generic"):
+                # [Dynamic] 候補リストに含まれていれば、その選択変数を返す
+                if src_id in input_vars:
+                    outgoing.append(input_vars[src_id])
+            else:
+                # [Fixed] IDが一致すれば、固定の入力変数を返す
+                if src_id == or_peer_node["source_a_id"]:
+                    outgoing.append(input_vars["from_a"])
+                if src_id == or_peer_node["source_b_id"]:
+                    outgoing.append(input_vars["from_b"])
+                    
         return outgoing
 
     def _get_outgoing_vars_from_peer(self, peer_node_index):
@@ -268,10 +295,6 @@ class OrToolsSolver:
             r_src = self.forest_vars[dst_target_idx][l_src][k_src]["ratio_vars"][reagent_idx]
             p_src = self.problem.p_value_maps[dst_target_idx][(l_src, k_src)]
             
-            # r_src の最大値は p_src
-            # w_var の最大値は、その変数の定義時に設定した上限値 (max_sharing_vol)
-            # ここでは簡易的に w_var のドメイン上限を取得するか、安全側で f_dst (供給先の容量) を使う
-            # より厳密には: srcノードのf_value と Config.MAX_SHARING_VOLUME の小さい方
             f_src = self.problem.targets_config[dst_target_idx]["factors"][l_src]
             max_w = f_src
             if Config.MAX_SHARING_VOLUME is not None:
@@ -297,7 +320,7 @@ class OrToolsSolver:
                 or_peer_node = self.peer_vars[r_node_idx]
                 r_src = or_peer_node["ratio_vars"][reagent_idx]
                 p_src = or_peer_node["p_value"]
-                max_w = 2 # ピアノードの最大出力は 2
+                max_w = 2 
             else:
                 m_src = parsed_key["target_idx"]
                 l_src = parsed_key["level"]
@@ -318,12 +341,11 @@ class OrToolsSolver:
         return rhs_terms
     
     def _set_ratio_sum_constraints(self):
-        """[制約4] 各ノードの比率の合計値 (★変更適用済み)"""
+        """[制約4] 各ノードの比率の合計値"""
         for target_idx, level, node_idx, node_vars in self._iterate_all_nodes():
             p_node = self.problem.p_value_maps[target_idx][(level, node_idx)]
             is_active = node_vars["is_active_var"]
             
-            # --- ★変更: アクティブ時のみ合計を強制、非アクティブ時は0に固定 ---
             self.model.Add(sum(node_vars["ratio_vars"]) == p_node).OnlyEnforceIf(is_active)
             for r_var in node_vars["ratio_vars"]:
                 self.model.Add(r_var == 0).OnlyEnforceIf(is_active.Not())
@@ -341,7 +363,7 @@ class OrToolsSolver:
                     )
 
     def _set_mixer_capacity_constraints(self):
-        """[制約6] ミキサー容量の制約 (★変更適用済み)"""
+        """[制約6] ミキサー容量の制約"""
         for target_idx, level, node_idx, node_vars in self._iterate_all_nodes():
             f_value = self.problem.targets_config[target_idx]["factors"][level]
             total_sum = node_vars["total_input_var"]
@@ -350,22 +372,16 @@ class OrToolsSolver:
             if level == 0:
                 self.model.Add(total_sum == f_value)
             else:
-                # --- ★変更: 線形制約に単純化 ---
-                # TotalInput == is_active * f_value
                 self.model.Add(total_sum == is_active * f_value)
 
-    def _set_range_constraints(self):
-        pass
-
     def _set_activity_constraints(self):
-        """[制約8] ノードのアクティビティ制約 (★変更適用済み)"""
+        """[制約8] ノードのアクティビティ制約"""
         # (A) DFMMノード
         for (src_target_idx, src_level, src_node_idx, node_vars) in self._iterate_all_nodes():
             if src_level == 0: continue
             total_used = sum(self._get_outgoing_vars(src_target_idx, src_level, src_node_idx))
             is_active = node_vars["is_active_var"]
             
-            # --- ★変更: is_used 変数削除 ---
             self.model.Add(total_used >= 1).OnlyEnforceIf(is_active)
             self.model.Add(total_used == 0).OnlyEnforceIf(is_active.Not())
             
@@ -374,51 +390,87 @@ class OrToolsSolver:
             total_used = sum(self._get_outgoing_vars_from_peer(i))
             is_active = or_peer_node["is_active_var"]
 
-            # --- ★変更: is_used 変数削除 ---
             self.model.Add(total_used >= 1).OnlyEnforceIf(is_active)
             self.model.Add(total_used == 0).OnlyEnforceIf(is_active.Not())
 
     def _set_peer_mixing_constraints(self):
-        """[制約9] ピア(R)ノードの混合制約 (★変更適用済み)"""
+        """[制約9] ピア(R)ノードの混合制約 (分岐対応版) [Modified]"""
         for i, or_peer_node in enumerate(self.peer_vars):
-            total_input = or_peer_node["total_input_var"]
-            is_active = or_peer_node["is_active_var"]
-            w_a = or_peer_node["input_vars"]["from_a"] 
-            w_b = or_peer_node["input_vars"]["from_b"] 
+            if or_peer_node.get("is_generic"):
+                self._set_dynamic_peer_constraints(or_peer_node)
+            else:
+                self._set_fixed_peer_constraints(or_peer_node)
 
-            self.model.Add(total_input == w_a + w_b)
+    def _set_dynamic_peer_constraints(self, or_peer_node):
+        """新ロジック用の制約: 候補リストから2つ選ぶ"""
+        total_input = or_peer_node["total_input_var"]
+        is_active = or_peer_node["is_active_var"]
+        input_vars_dict = or_peer_node["input_vars"]
+        p_val = or_peer_node["p_value"]
+        
+        # 1. 選択数制約 (Activeなら2つ選ぶ)
+        selection_sum = sum(input_vars_dict.values())
+        self.model.Add(selection_sum == 2).OnlyEnforceIf(is_active)
+        self.model.Add(selection_sum == 0).OnlyEnforceIf(is_active.Not())
+        
+        # TotalInputは2
+        self.model.Add(total_input == 2).OnlyEnforceIf(is_active)
+        self.model.Add(total_input == 0).OnlyEnforceIf(is_active.Not())
+        
+        # 2. 比率計算 (条件付き加算)
+        r_new_vars = or_peer_node["ratio_vars"]
+        self.model.Add(sum(r_new_vars) == p_val).OnlyEnforceIf(is_active) # 合計整合性
+        self.model.Add(sum(r_new_vars) == 0).OnlyEnforceIf(is_active.Not())
 
-            # --- ★変更: 冗長な TotalInput == 2 を削除 ---
-            self.model.Add(w_a == 1).OnlyEnforceIf(is_active)
-            self.model.Add(w_b == 1).OnlyEnforceIf(is_active)
-
-            self.model.Add(total_input == 0).OnlyEnforceIf(is_active.Not())
-            self.model.Add(w_a == 0).OnlyEnforceIf(is_active.Not())
-            self.model.Add(w_b == 0).OnlyEnforceIf(is_active.Not())
-
-            p_val = or_peer_node["p_value"]
-            r_new_vars = or_peer_node["ratio_vars"]
-            self.model.Add(sum(r_new_vars) == p_val).OnlyEnforceIf(is_active)
-            self.model.Add(sum(r_new_vars) == 0).OnlyEnforceIf(is_active.Not())
+        for reagent_idx in range(self.problem.num_reagents):
+            lhs = 2 * r_new_vars[reagent_idx]
+            rhs_terms = []
             
-            m_a, l_a, k_a = or_peer_node["source_a_id"]
-            r_a_vars = self.forest_vars[m_a][l_a][k_a]["ratio_vars"]
-            m_b, l_b, k_b = or_peer_node["source_b_id"]
-            r_b_vars = self.forest_vars[m_b][l_b][k_b]["ratio_vars"]
+            for src_id, select_var in input_vars_dict.items():
+                m, l, k = src_id
+                src_ratio_var = self.forest_vars[m][l][k]["ratio_vars"][reagent_idx]
+                
+                # intermediate = src_ratio if selected else 0
+                term = self.model.NewIntVar(0, p_val, f"term_{or_peer_node['name']}_r{reagent_idx}_{m}_{l}_{k}")
+                self.model.Add(term == src_ratio_var).OnlyEnforceIf(select_var)
+                self.model.Add(term == 0).OnlyEnforceIf(select_var.Not())
+                rhs_terms.append(term)
             
-            for reagent_idx in range(self.problem.num_reagents):
-                lhs = 2 * r_new_vars[reagent_idx]
-                rhs = r_a_vars[reagent_idx] + r_b_vars[reagent_idx]
-                # --- ★変更: Big-M を OnlyEnforceIf に変更 ---
-                self.model.Add(lhs == rhs).OnlyEnforceIf(is_active)
+            self.model.Add(lhs == sum(rhs_terms)).OnlyEnforceIf(is_active)
+
+    def _set_fixed_peer_constraints(self, or_peer_node):
+        """旧ロジック用の制約: 固定ペアから入力"""
+        total_input = or_peer_node["total_input_var"]
+        is_active = or_peer_node["is_active_var"]
+        w_a = or_peer_node["input_vars"]["from_a"] 
+        w_b = or_peer_node["input_vars"]["from_b"] 
+
+        self.model.Add(total_input == w_a + w_b)
+
+        self.model.Add(w_a == 1).OnlyEnforceIf(is_active)
+        self.model.Add(w_b == 1).OnlyEnforceIf(is_active)
+
+        self.model.Add(total_input == 0).OnlyEnforceIf(is_active.Not())
+        self.model.Add(w_a == 0).OnlyEnforceIf(is_active.Not())
+        self.model.Add(w_b == 0).OnlyEnforceIf(is_active.Not())
+
+        p_val = or_peer_node["p_value"]
+        r_new_vars = or_peer_node["ratio_vars"]
+        self.model.Add(sum(r_new_vars) == p_val).OnlyEnforceIf(is_active)
+        self.model.Add(sum(r_new_vars) == 0).OnlyEnforceIf(is_active.Not())
+        
+        m_a, l_a, k_a = or_peer_node["source_a_id"]
+        r_a_vars = self.forest_vars[m_a][l_a][k_a]["ratio_vars"]
+        m_b, l_b, k_b = or_peer_node["source_b_id"]
+        r_b_vars = self.forest_vars[m_b][l_b][k_b]["ratio_vars"]
+        
+        for reagent_idx in range(self.problem.num_reagents):
+            lhs = 2 * r_new_vars[reagent_idx]
+            rhs = r_a_vars[reagent_idx] + r_b_vars[reagent_idx]
+            self.model.Add(lhs == rhs).OnlyEnforceIf(is_active)
     
     def _set_input_degree_constraints(self):
-        """
-        [追加] 入力次数(Fan-in)の制限:
-        1つのノードに流入する共有液（Intra/Inter Sharing）の種類数に上限を設ける。
-        これにより、「少しずつ多種類を混ぜる」ような複雑な組み合わせを排除し、計算を高速化する。
-        """
-        # Configから設定値を取得 (デフォルトは制限なし)
+        """[追加] 入力次数(Fan-in)の制限"""
         max_fan_in = getattr(Config, "MAX_SHARED_INPUTS", None)
 
         if max_fan_in is None:
@@ -426,10 +478,7 @@ class OrToolsSolver:
 
         print(f"--- Setting max shared input types (Fan-in) per node to {max_fan_in} ---")
 
-        # すべてのDFMMノードに対して制約を適用
         for target_idx, level, node_idx, node_vars in self._iterate_all_nodes():
-            
-            # このノードへの「共有入力」変数をすべて収集 (試薬変数は含まない)
             sharing_vars = []
             sharing_vars.extend(node_vars.get("intra_sharing_vars", {}).values())
             sharing_vars.extend(node_vars.get("inter_sharing_vars", {}).values())
@@ -437,40 +486,52 @@ class OrToolsSolver:
             if not sharing_vars:
                 continue
 
-            # 各共有変数が「実際に使われているか (>0)」を表すブール変数を作成
             is_used_bools = []
             for var in sharing_vars:
-                # ブール変数: var > 0 なら True, var == 0 なら False
                 is_used = self.model.NewBoolVar(f"is_used_input_{var.Name()}")
-                
-                # var > 0  => is_used は True でなければならない
                 self.model.Add(var > 0).OnlyEnforceIf(is_used)
-                # var == 0 => is_used は False でなければならない
                 self.model.Add(var == 0).OnlyEnforceIf(is_used.Not())
-                
                 is_used_bools.append(is_used)
             
-            # 使用される共有入力の数の合計が、上限(max_fan_in)以下になるよう制約
             self.model.Add(sum(is_used_bools) <= max_fan_in)
 
     def _set_symmetry_breaking_constraints(self):
+        """対称性排除制約: 探索空間を削減するために等価な解を排除する"""
+        
+        # 1. DFMMノード間の対称性排除 (既存)
+        # 同じレベルのノード同士で、左側のノードが優先的に使われるようにする
         for m, tree_vars in enumerate(self.forest_vars):
             for l, nodes_vars_list in tree_vars.items():
                 if len(nodes_vars_list) > 1:
                     for k in range(len(nodes_vars_list) - 1):
                         node_k = nodes_vars_list[k]
                         node_k1 = nodes_vars_list[k+1]
-
-                        # 既存: アクティブ順序
+                        
+                        # k が非アクティブなら k+1 も非アクティブ
                         self.model.Add(node_k["is_active_var"] >= node_k1["is_active_var"])
-
-                        # ★追加: 処理量の順序 (k は k+1 以上の量を処理する)
-                        # これにより「同じ量を処理するなら左寄せ」に解が限定され、
-                        # 証明すべき探索空間が半分以下になります。
+                        # k の処理量が k+1 以上
                         self.model.Add(node_k["total_input_var"] >= node_k1["total_input_var"])
 
+        # 2. Generic Peer Node (動的ペアノード) 間の対称性排除
+        # 同じP値を持つペアノードのグループ内で、インデックスが小さい順に使われるように強制する
+        peers_by_p = defaultdict(list)
+        for p_var in self.peer_vars:
+            if p_var.get("is_generic"):
+                peers_by_p[p_var["p_value"]].append(p_var)
+        
+        for p_val, peers in peers_by_p.items():
+            # 同じP値のペアノードが複数ある場合
+            if len(peers) > 1:
+                print(f"--- Adding symmetry breaking for {len(peers)} generic peers (P={p_val}) ---")
+                for i in range(len(peers) - 1):
+                    peer_k = peers[i]
+                    peer_k1 = peers[i+1]
+                    
+                    # 1つ目が使われないなら、2つ目も使わない
+                    self.model.Add(peer_k["is_active_var"] >= peer_k1["is_active_var"])
+
     def _set_max_reagent_input_per_node_constraint(self):
-        """[制約11] 変更: 試薬投入量上限をソフト制約（目標値）として設定"""
+        """[制約11] 試薬投入量上限をソフト制約として設定"""
         max_limit = Config.MAX_TOTAL_REAGENT_INPUT_PER_NODE
 
         if max_limit is None or max_limit <= 0:
@@ -480,31 +541,22 @@ class OrToolsSolver:
             f"--- Setting max total reagent input per node (Soft Constraint) to {max_limit} ---"
         )
 
-        self.all_reagent_excess_vars = [] # 超過分変数を保存するリスト
+        self.all_reagent_excess_vars = [] 
 
-        # 全てのDFMMノードをループ
         for _, _, _, node_vars in self._iterate_all_nodes():
             reagent_vars = node_vars.get("reagent_vars", [])
             
             if reagent_vars:
-                # このノードの試薬投入合計を表す変数
-                total_reagent_input = self.model.NewIntVar(0, 1000, "total_reagent_sum") # 1000は十分大きな値
+                total_reagent_input = self.model.NewIntVar(0, 1000, "total_reagent_sum") 
                 self.model.Add(total_reagent_input == sum(reagent_vars))
                 
-                # 超過量を表す変数 (0以上)
-                # excess = max(0, total_reagent_input - max_limit) となるように設定
                 excess_var = self.model.NewIntVar(0, 1000, "reagent_excess")
-                
-                # 制約を追加して excess_var を定義
-                # 1. excess >= 合計 - 上限
-                #    (合計 <= 上限 のときは 右辺が負になるが、変数のドメインが0以上なので0になる)
                 self.model.Add(excess_var >= total_reagent_input - max_limit)
                 
                 self.all_reagent_excess_vars.append(excess_var)
 
     def _set_objective_function(self):
-        """[制約10] 目的関数 (変更あり: ペナルティ項の追加)"""
-        # --- 既存の変数収集ロジック (変更なし) ---
+        """[制約10] 目的関数"""
         all_waste_vars = []
         all_activity_vars = []
         all_reagent_vars = []
@@ -531,18 +583,12 @@ class OrToolsSolver:
         total_operations = sum(all_activity_vars)
         total_reagents = sum(all_reagent_vars)
 
-        # --- ここから追加: 超過量へのペナルティ計算 ---
-        
-        # ペナルティの重み: 非常に大きな値にする (廃棄物削減よりもルール遵守を優先させるため)
-        # これにより、どうしても守れない場合以外は、必ず制限を守る解が選ばれます。
         penalty_weight = 100000 
         total_penalty = 0
         
-        # リストが存在する場合のみペナルティを計算
         if hasattr(self, 'all_reagent_excess_vars') and self.all_reagent_excess_vars:
             total_penalty = sum(self.all_reagent_excess_vars) * penalty_weight
 
-        # 最終的な目的関数にペナルティを加算して最小化
         if self.objective_mode == "waste":
             self.model.Minimize(total_waste + total_penalty)
             return total_waste

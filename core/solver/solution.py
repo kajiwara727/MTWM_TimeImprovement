@@ -64,7 +64,7 @@ class OrToolsSolutionModel:
                         }
                     )
 
-        # 2. ピア(R)ノードの分析
+        # 2. ピア(R)ノードの分析 [Modified]
         for i, peer_node_vars in enumerate(self.peer_vars):
             total_input = self._v(peer_node_vars["total_input_var"])
             if total_input == 0:
@@ -73,20 +73,37 @@ class OrToolsSolutionModel:
             results["total_operations"] += 1
             results["total_waste"] += self._v(peer_node_vars["waste_var"])
 
-            z3_peer_node = self.problem.peer_nodes[i]
-            m_a, l_a, k_a = z3_peer_node["source_a_id"]
-            name_a = create_dfmm_node_name(m_a, l_a, k_a)
-            m_b, l_b, k_b = z3_peer_node["source_b_id"]
-            name_b = create_dfmm_node_name(m_b, l_b, k_b)
+            # 混合内容の文字列生成 (Dynamic対応)
+            if peer_node_vars.get("is_generic"):
+                # [Dynamic] 選択された変数を探す
+                selected_names = []
+                for src_id, var in peer_node_vars["input_vars"].items():
+                    if self._v(var) > 0:
+                        name = create_dfmm_node_name(*src_id)
+                        selected_names.append(f"1 x {name}")
+                
+                mixing_str = " + ".join(selected_names)
+                # 便宜上のレベル（P値から推測するか、単に0.5とする）
+                avg_level = 0.5 
+            else:
+                # [Fixed]
+                z3_peer_node = self.problem.peer_nodes[i]
+                m_a, l_a, k_a = z3_peer_node["source_a_id"]
+                name_a = create_dfmm_node_name(m_a, l_a, k_a)
+                m_b, l_b, k_b = z3_peer_node["source_b_id"]
+                name_b = create_dfmm_node_name(m_b, l_b, k_b)
+                
+                mixing_str = f"1 x {name_a} + 1 x {name_b}"
+                avg_level = (l_a + l_b) / 2.0 - 0.5
             
             results["nodes_details"].append(
                 {
                     "target_id": -1,
-                    "level": (l_a + l_b) / 2.0 - 0.5,
+                    "level": avg_level,
                     "name": peer_node_vars["name"],
                     "total_input": total_input,
                     "ratio_composition": [self._v(r) for r in peer_node_vars["ratio_vars"]],
-                    "mixing_str": f"1 x {name_a} + 1 x {name_b}",
+                    "mixing_str": mixing_str,
                 }
             )
 
