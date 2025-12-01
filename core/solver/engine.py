@@ -580,6 +580,8 @@ class OrToolsSolver:
             all_activity_vars.append(or_peer_node["is_active_var"])
 
         total_waste = sum(all_waste_vars)
+        if self.objective_mode == "waste":
+            self.model.Add(total_waste >= 1)
         total_operations = sum(all_activity_vars)
         total_reagents = sum(all_reagent_vars)
 
