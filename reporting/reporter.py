@@ -214,4 +214,7 @@ class SolutionReporter:
                         else "     (No mixing actions for this node)",
                     ]
                 )
+
+        # [追加] 最後に合計時間を再出力
+        content.append(f"\nTotal Execution Time: {elapsed_time:.2f} seconds")
         return content
