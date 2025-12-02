@@ -148,6 +148,10 @@ def _calculate_and_save_summary(
     else:
         content.append("\nNo successful runs found to calculate averages.")
 
+    # [追加] 全実行の合計時間を計算して末尾に追加
+    total_elapsed_time = sum(run.get("elapsed_time", 0) for run in run_results)
+    content.append(f"\nTotal Execution Time (Sum of all runs): {total_elapsed_time:.2f} seconds")
+
     _save_summary_file(filepath, content, title_prefix)
 
 
@@ -287,5 +291,9 @@ def save_permutation_summary(run_results, output_dir, objective_mode):
                 )
     else:
         content.append("\nNo second best permutation found.")
+
+    # [追加] 全実行の合計時間を計算して末尾に追加
+    total_elapsed_time = sum(run.get("elapsed_time", 0) for run in run_results)
+    content.append(f"\nTotal Execution Time (Sum of all runs): {total_elapsed_time:.2f} seconds")
 
     _save_summary_file(filepath, content, "Permutation Analysis")
