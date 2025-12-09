@@ -2,9 +2,11 @@
 # 'auto'系モードでは、'factors' (混合階層) を指定する必要はありません。
 # 'ratios' (混合比率) のみ定義します。
 TARGETS_FOR_AUTO_MODE = [
-    # Def[135]-2-3-1回目
-    {'name': 'Target 1', 'ratios': [41, 71, 23]},
-    {'name': 'Target 2', 'ratios': [54, 52, 29]},
+    # 分析用
+    {'name': 'Target 1', 'ratios': [9, 25, 43, 58]},
+    {'name': 'Target 2', 'ratios': [19, 65, 17, 34]},
+    {'name': 'Target 1', 'ratios': [69, 3, 35, 28]},
+    {'name': 'Target 2', 'ratios': [56, 67, 7, 5]},
 
     # Def[135]-2-3-2回目
     # {'name': 'Target 1', 'ratios': [121,2,12]},

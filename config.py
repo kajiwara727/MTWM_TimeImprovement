@@ -1,7 +1,7 @@
 # config.py
 
 # 実行名を定義します。出力ディレクトリの名前の一部として使用されます。
-RUN_NAME = "test"
+RUN_NAME = "PowerPoint_125_Unlimit_ROLEBASED_ALL"
 
 # 実行モード: 'manual', 'auto', 'auto_permutations', 'random', 'file_load'
 FACTOR_EXECUTION_MODE = "auto"
@@ -10,12 +10,12 @@ FACTOR_EXECUTION_MODE = "auto"
 OPTIMIZATION_MODE = "waste"
 
 # --- 出力設定 ---
-ENABLE_VISUALIZATION = False # True or False
+ENABLE_VISUALIZATION = True # True or False
 CONFIG_LOAD_FILE = "random_configs.json"
 
 # --- 制約条件 (ソルバーの挙動制御) ---
 MAX_CPU_WORKERS = 16
-MAX_TIME_PER_RUN_SECONDS = None
+MAX_TIME_PER_RUN_SECONDS = 2000
 ABSOLUTE_GAP_LIMIT = 0.99
 MAX_SHARING_VOLUME = None
 MAX_SHARED_INPUTS = None
@@ -28,15 +28,26 @@ PEER_NODE_LIMIT = "half_p_group"
 # ペア混合ノードの接続モード
 # "fixed"   : 従来の方式 (Python側で事前にペアを固定する)
 # "dynamic" : 新方式 (ソルバーが候補の中から最適な2つを選択する)
-PEER_CONNECTION_MODE = "dynamic" 
+PEER_CONNECTION_MODE = "fixed" 
 
 ENABLE_FINAL_PRODUCT_SHARING = False
+
+# [NEW] 役割ベースのプルーニング設定 (DFMMノード間の接続削減)
+# True : 各ノードに役割を与え、Intra接続を制限する (高速化)
+# False: 可能なすべてのノードを接続候補とする (厳密解)
+ENABLE_ROLE_BASED_PRUNING = False
+
+# [NEW] Inter-Sharing（他ターゲットへの供給）の接続モード
+# 'all'   : 全ターゲットへ接続 (役割Role2による制限あり)
+# 'ring'  : 次のターゲットへ循環接続 (制限なし・確実につながる) [推奨]
+# 'linear': 一方向接続 (最後は戻らない)
+INTER_SHARING_MODE = 'all'
 
 # --- 'random' モード用パラメータ ---
 RANDOM_N_TARGETS = 3
 RANDOM_T_REAGENTS = 3
-RANDOM_K_RUNS = 10
-RANDOM_S_RATIO_SUM_DEFAULT = 18
+RANDOM_K_RUNS = 30
+RANDOM_S_RATIO_SUM_DEFAULT = 125
 
 # --- 混合比和の生成ルール（以下のいずれか1つが使用されます） ---
 # 以下の設定は、`runners/random_runner.py` によって上から順に評価され、

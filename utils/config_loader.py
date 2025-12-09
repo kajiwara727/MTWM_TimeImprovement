@@ -27,6 +27,10 @@ class Config:
     PEER_CONNECTION_MODE = getattr(config, "PEER_CONNECTION_MODE", "fixed")
     
     ENABLE_FINAL_PRODUCT_SHARING = getattr(config, "ENABLE_FINAL_PRODUCT_SHARING", False)
+
+    # [NEW] プルーニング設定の読み込み
+    ENABLE_ROLE_BASED_PRUNING = getattr(config, 'ENABLE_ROLE_BASED_PRUNING', False)
+    INTER_SHARING_MODE = getattr(config, 'INTER_SHARING_MODE', 'all')
     
     # --- Random設定 ---
     RANDOM_T_REAGENTS = config.RANDOM_T_REAGENTS

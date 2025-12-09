@@ -228,6 +228,8 @@ class MTWMProblem:
 
     def _precompute_potential_sources_v2(self):
         source_map = {}
+        # ... (中略: all_dest_nodes, all_sources の生成ロジックなどは変更なし) ...
+        
         all_dest_nodes = [
             (target_idx, level, node_idx)
             for target_idx, tree in enumerate(self.forest)
@@ -242,25 +244,24 @@ class MTWMProblem:
             (dst_target_idx, dst_level, dst_node_idx),
             (src_target_idx, src_level, src_node_idx),
         ) in itertools.product(all_dest_nodes, all_sources):
+            
+            # --- 既存の物理制約チェック (P値, レベル差など) ---
             p_dst = self.p_value_maps[dst_target_idx][(dst_level, dst_node_idx)]
             f_dst = self.targets_config[dst_target_idx]["factors"][dst_level]
 
             if src_target_idx == "R":
+                # Peerノードの場合のチェック (変更なし)
                 peer_node = self.peer_nodes[src_level]
                 p_src = peer_node["p_value"]
-                
-                # Dynamic対応: 候補ノードのレベル情報を加味
                 if peer_node.get("is_generic"):
-                    # genericの場合はどこへでも行けるように一旦許可する
-                    # (厳密には候補の最小レベルなどを見るべきだが、接続可能性を広げるため)
                     l_src_eff = 999 
                 else:
                     l_src_eff = max(
                         peer_node["source_a_id"][1], peer_node["source_b_id"][1]
                     )
-                
                 is_valid_level_connection = (l_src_eff > dst_level)
             else:
+                # DFMMノードの場合のチェック (変更なし)
                 p_src = self.p_value_maps[src_target_idx][(src_level, src_node_idx)]
                 l_src_eff = src_level
                 if (dst_target_idx, dst_level, dst_node_idx) == (
@@ -274,7 +275,6 @@ class MTWMProblem:
                 is_final_node_connection = (
                     (l_src_eff == 0) and Config.ENABLE_FINAL_PRODUCT_SHARING
                 )
-                
                 is_valid_level_connection = (
                     is_intermediate_node_connection or is_final_node_connection
                 )
@@ -282,7 +282,6 @@ class MTWMProblem:
             if not is_valid_level_connection:
                 continue
             
-            # MAX_LEVEL_DIFF チェック (Peerノードはgenericの場合一旦無視)
             is_generic_peer = (src_target_idx == "R" and peer_node.get("is_generic", False))
             if not is_generic_peer:
                  if Config.MAX_LEVEL_DIFF is not None and l_src_eff > dst_level + Config.MAX_LEVEL_DIFF:
@@ -291,10 +290,69 @@ class MTWMProblem:
             if (p_dst // f_dst) % p_src != 0:
                 continue
 
+            # =================================================================
+            # [NEW] 役割ベースの接続フィルタリング (Role-Based Pruning)
+            # =================================================================
+            if Config.ENABLE_ROLE_BASED_PRUNING:
+                # 1. Peerノード(R)からの供給は、従来の機能を維持するためプルーニングしない
+                if src_target_idx == "R":
+                    pass 
+                
+                # 2. DFMMノード間の接続にはプルーニングを適用
+                else:
+                    # 親子関係(Default Edge)かどうかを確認 -> 親子なら無条件許可
+                    is_default_edge = False
+                    if src_target_idx == dst_target_idx:
+                         dst_node_struct = self.tree_structures[dst_target_idx].get((dst_level, dst_node_idx))
+                         if dst_node_struct and (src_level, src_node_idx) in dst_node_struct['children']:
+                             is_default_edge = True
+                    
+                    if not is_default_edge:
+                        is_allowed = False
+                        
+                        # --- A. 同じターゲット内 (Intra) ---
+                        if src_target_idx == dst_target_idx:
+                            role_id = (src_node_idx + src_target_idx) % 3
+                            
+                            # Role 0: 近距離サポーター (直下のみ)
+                            if role_id == 0:
+                                if (src_level - dst_level) == 1: is_allowed = True
+                            # Role 1: 遠距離サポーター (2つ以上離れる)
+                            elif role_id == 1:
+                                if (src_level - dst_level) > 1: is_allowed = True
+                            # Role 2 はIntraには貢献しない
+
+                        # --- B. 異なるターゲット間 (Inter) ---
+                        else:
+                            mode = Config.INTER_SHARING_MODE
+                            
+                            if mode == 'ring':
+                                # 【リングモード】(Role制限なし)
+                                # 次のターゲットであれば、どのノードからでも接続を許可
+                                num_targets = len(self.targets_config)
+                                if dst_target_idx == (src_target_idx + 1) % num_targets:
+                                    is_allowed = True
+                                    
+                            elif mode == 'linear':
+                                # 【リニアモード】(Role制限なし)
+                                if dst_target_idx == src_target_idx + 1:
+                                    is_allowed = True
+                                    
+                            else:
+                                # 【Allモード】(Role 2 のみ)
+                                role_id = (src_node_idx + src_target_idx) % 3
+                                if role_id == 2:
+                                    is_allowed = True
+
+                        if not is_allowed:
+                            continue
+            # =================================================================
+
             key = (dst_target_idx, dst_level, dst_node_idx)
             if key not in source_map:
                 source_map[key] = []
             source_map[key].append((src_target_idx, src_level, src_node_idx))
+            
         return source_map
 
     def _create_sharing_vars_for_node(self, dst_target_idx, dst_level, dst_node_idx):
