@@ -71,6 +71,14 @@ class OrToolsSolver:
         self.solver.parameters.cut_level = 2
         self.solver.parameters.log_search_progress = True
 
+        # self.solver.parameters.linearization_level = 2
+        # self.solver.parameters.optimize_with_core =False
+        # self.solver.parameters.max_num_cuts = 2000 
+        # self.solver.parameters.cut_level = 2
+        # self.solver.parameters.boolean_encoding_level = 2
+        # self.solver.parameters.symmetry_level = 2 
+        # self.solver.parameters.log_search_progress = True
+
     def solve(self):
         start_time = time.time()
         print(f"\n--- Solving (mode: {self.objective_mode.upper()}) with Or-Tools CP-SAT ---")
@@ -528,7 +536,7 @@ class OrToolsSolver:
 
         total_waste = sum(all_waste_vars)
         if self.objective_mode == "waste":
-            self.model.Add(total_waste >= 1)
+            self.model.Add(total_waste >= 0)
         
         total_operations = sum(all_activity_vars)
         total_reagents = sum(all_reagent_vars)
