@@ -3,7 +3,7 @@ import sys
 import os
 import copy
 
-# プロジェクトルートへのパスを通す (main.pyと同じ階層に置く想定)
+# プロジェクトルートへのパスを通す
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from core.algorithm.dfmm import find_factors_for_sum
@@ -11,7 +11,30 @@ from scenarios import TARGETS_FOR_AUTO_MODE, TARGETS_FOR_MANUAL_MODE
 
 # 設定: どちらのシナリオをチェックするか ("auto", "manual", "all")
 CHECK_MODE = "all" 
-MAX_MIXER_SIZE = 5  # Autoモードでのfactor計算用
+MAX_MIXER_SIZE = 5
+
+# --- 出力先設定 ---
+OUTPUT_FILE = "uniqueness_analysis_result.txt"
+
+class DualLogger:
+    """
+    標準出力（コンソール）とファイルの双方にメッセージを出力するためのクラス
+    """
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "w", encoding='utf-8')
+
+    def write(self, message):
+        self.terminal.write(message) # 画面に出力
+        self.log.write(message)      # ファイルに出力
+
+    def flush(self):
+        # リアルタイム反映のためにflushを行う
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
 
 def analyze_unique_reagent_allocation(target_config):
     """
@@ -47,20 +70,15 @@ def analyze_unique_reagent_allocation(target_config):
         total_inputs = sum(level_remainders) + len(child_node_ids)
         num_nodes = math.ceil(total_inputs / current_factor) if total_inputs > 0 else 0
         
-        # 試薬の種類数を確認 (値が >0 の試薬が何種類あるか)
+        # 試薬の種類数を確認
         active_reagents_indices = [i for i, val in enumerate(level_remainders) if val > 0]
         num_active_reagents_types = len(active_reagents_indices)
         
-        # このレベルで「試薬を受け入れる必要がある（空きがある）」ノードの数
-        # (子ノードの分配はラウンドロビンで決定的とするため、各ノードの空き容量は計算可能)
+        # ノードごとの空き容量計算
         nodes_needing_reagents = []
         node_capacities = []
         
-        # ノードごとの空き容量を計算
         for k in range(num_nodes):
-            # 子ノードの数: child_node_ids をラウンドロビンで分配した場合の数を計算
-            # child_node_ids の長さ L, ノード数 N の場合
-            # k番目のノードが受け取る子の数は: L // N + (1 if k < L % N else 0)
             if num_nodes > 0:
                 num_children = (len(child_node_ids) // num_nodes) + (1 if k < (len(child_node_ids) % num_nodes) else 0)
             else:
@@ -84,29 +102,22 @@ def analyze_unique_reagent_allocation(target_config):
             is_unique = False
             reason = ""
 
-            # 条件1: 空き容量が0 (試薬は [0, 0, ...])
             if slots_needed == 0:
                 is_unique = True
                 reason = "Full with children (Capacity 0)"
-
-            # 条件2: このレベルで試薬を受け取るノードが自分だけ (余り全てを受け取る)
             elif len(nodes_needing_reagents) == 1 and k in nodes_needing_reagents:
                 is_unique = True
                 reason = "Sole receiver at this level"
-
-            # 条件3: 投入すべき試薬の種類が1種類のみ (空き容量をその試薬で埋める)
             elif num_active_reagents_types <= 1:
                 is_unique = True
                 reason = "Mono-reagent source (Only 1 type available)"
             
-            # 判定結果の表示
             status_icon = "✅ UNIQUE" if is_unique else "⚠️ AMBIGUOUS"
             print(f"  {node_name:<15}: {status_icon} | Slots needed: {slots_needed} | {reason}")
             
             if not is_unique:
                 print(f"      -> Must decide how to distribute: {level_remainders}")
 
-        # 次のループへの準備
         child_node_ids = [(level, k) for k in range(num_nodes)]
         values_to_process = level_quotients
 
@@ -114,21 +125,17 @@ def prepare_targets():
     """scenarios.py からターゲットリストを作成する"""
     targets_to_check = []
 
-    # 1. Manual Mode Targets (factorsが既に定義されている)
     if CHECK_MODE in ["manual", "all"]:
         print(f"Loading {len(TARGETS_FOR_MANUAL_MODE)} manual targets...")
         targets_to_check.extend(copy.deepcopy(TARGETS_FOR_MANUAL_MODE))
 
-    # 2. Auto Mode Targets (factorsを計算する必要がある)
     if CHECK_MODE in ["auto", "all"]:
         print(f"Loading {len(TARGETS_FOR_AUTO_MODE)} auto targets...")
         auto_targets = copy.deepcopy(TARGETS_FOR_AUTO_MODE)
         
         for t in auto_targets:
-            # factors がなければ計算して追加
             if 'factors' not in t:
                 s = sum(t['ratios'])
-                # core.algorithm.dfmm の関数を使用
                 f = find_factors_for_sum(s, MAX_MIXER_SIZE)
                 if f is None:
                     print(f"Skipping {t['name']}: Could not find factors for sum {s}")
@@ -139,14 +146,32 @@ def prepare_targets():
     return targets_to_check
 
 if __name__ == "__main__":
-    print("--- Checking Reagent Allocation Uniqueness from scenarios.py ---")
-    
-    # ターゲットリストの準備
-    config = prepare_targets()
-    
-    if not config:
-        print("No targets found to check. Please check scenarios.py or CHECK_MODE.")
-    else:
-        # 各ターゲットについて分析を実行
-        for target in config:
-            analyze_unique_reagent_allocation(target)
+    # --- ロガーのセットアップ ---
+    # sys.stdout を DualLogger に置き換えることで、全ての print 文を
+    # コンソールとファイルの両方に書き込むようにする。
+    original_stdout = sys.stdout
+    logger = DualLogger(OUTPUT_FILE)
+    sys.stdout = logger
+
+    try:
+        print("--- Checking Reagent Allocation Uniqueness from scenarios.py ---")
+        print(f"Output will be saved to: {os.path.abspath(OUTPUT_FILE)}\n")
+        
+        # ターゲットリストの準備
+        config = prepare_targets()
+        
+        if not config:
+            print("No targets found to check. Please check scenarios.py or CHECK_MODE.")
+        else:
+            # 各ターゲットについて分析を実行
+            for target in config:
+                analyze_unique_reagent_allocation(target)
+                
+    except Exception as e:
+        print(f"\nAn error occurred during execution: {e}")
+        raise e
+    finally:
+        # 終了処理: 標準出力を元に戻し、ファイルを閉じる
+        sys.stdout = original_stdout
+        logger.close()
+        print(f"\nDone. Analysis saved to {OUTPUT_FILE}")
